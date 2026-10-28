@@ -17,6 +17,10 @@ window.clipshare = {
     listenPort: 5555,
     deviceKind: "pc",
     localAddresses: ["192.168.1.10"],
+    appVersion: "0.1.0",
+    updateAvailable: true,
+    updateVersion: "0.2.0",
+    updateUrl: "https://github.com/wassizafar786/clipshare-lan/releases",
     pairingCode: null,
     pairingActive: false,
     peers: [
@@ -47,6 +51,8 @@ window.clipshare = {
     if (p) { p.paired = false; p.connected = false; }
     return Promise.resolve();
   },
+  checkUpdate() { return Promise.resolve({ updateAvailable: true }); },
+  openUpdate() { window.__openedUpdate = true; return Promise.resolve(); },
   onState(cb) { this._cb = cb; return () => {}; }
 };
 `;

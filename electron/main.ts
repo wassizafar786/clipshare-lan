@@ -6,6 +6,7 @@ import {
   nativeImage,
   ipcMain,
   nativeTheme,
+  shell,
 } from "electron";
 import { hostname } from "node:os";
 import { join } from "node:path";
@@ -14,6 +15,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { ClipMeshNetwork } from "./net";
 import { startClipboardWatch, writeClipboardText } from "./clipboard-watch";
 import { notifyOnce } from "./notify";
+import { checkForUpdate, type UpdateInfo } from "./update-check";
 import type { AppStateSnapshot, PeerInfo } from "./types";
 
 let tray: Tray | null = null;
@@ -21,6 +23,14 @@ let win: BrowserWindow | null = null;
 let net: ClipMeshNetwork | null = null;
 let stopWatch: (() => void) | null = null;
 let netPollTimer: ReturnType<typeof setInterval> | null = null;
+let updatePollTimer: ReturnType<typeof setInterval> | null = null;
+let updateInfo: UpdateInfo = {
+  currentVersion: "0.0.0",
+  latestVersion: null,
+  updateAvailable: false,
+  releaseUrl: null,
+  checkedAt: null,
+};
 
 /** Last known peer link state for transition notifications. */
 const peerLink = new Map<string, { paired: boolean; connected: boolean; name: string }>();
@@ -56,7 +66,20 @@ function pushState(): void {
 }
 
 function enrichSnapshot(s: AppStateSnapshot): AppStateSnapshot {
-  return s;
+  return {
+    ...s,
+    appVersion: updateInfo.currentVersion || app.getVersion(),
+    updateAvailable: updateInfo.updateAvailable,
+    updateVersion: updateInfo.latestVersion,
+    updateUrl: updateInfo.releaseUrl,
+  };
+}
+
+async function refreshUpdateInfo(): Promise<void> {
+  const current = app.getVersion();
+  updateInfo = await checkForUpdate(current);
+  updateInfo.currentVersion = current;
+  pushState();
 }
 
 function lanKey(addresses: string[]): string {
@@ -228,6 +251,14 @@ function wireIpc(): void {
       net?.addManualPeer(host, port, name) ?? "",
   );
   ipcMain.handle("peer:unpair", (_e, peerId: string) => net?.unpairPeer(peerId));
+  ipcMain.handle("update:check", async () => {
+    await refreshUpdateInfo();
+    return updateInfo;
+  });
+  ipcMain.handle("update:open", async () => {
+    const url = updateInfo.releaseUrl;
+    if (url) await shell.openExternal(url);
+  });
 }
 
 app.whenReady().then(async () => {
@@ -260,6 +291,8 @@ app.whenReady().then(async () => {
   }
   notifyReady = true;
 
+  updateInfo.currentVersion = app.getVersion();
+
   createWindow();
   buildTray();
   wireIpc();
@@ -269,6 +302,11 @@ app.whenReady().then(async () => {
     if (!net) return;
     watchTransitions(net.snapshot());
   }, 5000);
+
+  void refreshUpdateInfo();
+  updatePollTimer = setInterval(() => {
+    void refreshUpdateInfo();
+  }, 6 * 60 * 60 * 1000);
 
   stopWatch = startClipboardWatch(
     (text) => {
@@ -282,6 +320,7 @@ app.whenReady().then(async () => {
 
 app.on("before-quit", () => {
   if (netPollTimer) clearInterval(netPollTimer);
+  if (updatePollTimer) clearInterval(updatePollTimer);
   stopWatch?.();
   net?.stop();
 });

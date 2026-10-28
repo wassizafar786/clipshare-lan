@@ -50,6 +50,33 @@ body {
   margin: 0 auto;
 }
 
+.update-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--accent) 22%, var(--card));
+  border-bottom: 1px solid var(--accent);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.update-bar .ghost {
+  color: var(--text);
+}
+
+.version {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
 header h1 {
   margin: 0;
   font-size: 1.25rem;

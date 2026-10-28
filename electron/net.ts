@@ -94,6 +94,11 @@ export class ClipMeshNetwork {
       peers: [...this.peers.values()].sort((a, b) => a.name.localeCompare(b.name)),
       lastClipPreview: null,
       syncEnabled: this.syncEnabled,
+      // Filled by main enrichSnapshot
+      appVersion: "",
+      updateAvailable: false,
+      updateVersion: null,
+      updateUrl: null,
     };
   }
 

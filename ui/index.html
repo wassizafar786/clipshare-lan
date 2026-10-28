@@ -10,10 +10,20 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div id="updateBar" class="update-bar hidden" role="status">
+      <span id="updateText">A newer version is available.</span>
+      <div class="row">
+        <button id="btnUpdate" type="button">Update</button>
+        <button id="btnDismissUpdate" type="button" class="ghost">Dismiss</button>
+      </div>
+    </div>
     <div class="page">
-      <header>
-        <h1>ClipShare</h1>
-        <p class="sub">Same Wi‑Fi clipboard · tray / menu bar</p>
+      <header class="row between">
+        <div>
+          <h1>ClipShare</h1>
+          <p class="sub">Same Wi‑Fi clipboard · tray / menu bar</p>
+        </div>
+        <p class="version" id="appVersion">v—</p>
       </header>
 
       <section class="card">

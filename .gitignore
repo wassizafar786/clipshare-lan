@@ -1,5 +1,9 @@
 node_modules/
 dist/
+release/
 .aidlc-fast/audit/
 .aidlc-fast/state.json
 *.log
+*.exe
+*.dmg
+*.blockmap

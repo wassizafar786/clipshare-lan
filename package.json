@@ -9,8 +9,12 @@
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node scripts/smoke-protocol.mjs",
+    "test": "node scripts/smoke-protocol.mjs && node scripts/smoke-semver.mjs",
     "lint": "echo lint-ok",
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "release:build": "node scripts/publish-release.mjs",
     "aidlc": "bun ../aidlc-fast/src/cli.ts"
   },
   "keywords": [
@@ -26,10 +30,44 @@
     "@types/ws": "^8.18.0",
     "aidlc-fast": "^0.6.0",
     "electron": "^35.0.0",
+    "electron-builder": "^26.0.12",
     "typescript": "^5.8.0"
   },
   "dependencies": {
     "uuid": "^11.1.0",
     "ws": "^8.18.1"
+  },
+  "build": {
+    "appId": "com.clipshare.lan",
+    "productName": "ClipShare LAN",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "ClipShare-LAN-${version}-win-${arch}.${ext}",
+      "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities",
+      "artifactName": "ClipShare-LAN-${version}-mac-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": null
   }
 }

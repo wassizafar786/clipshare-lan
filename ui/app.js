@@ -2,6 +2,7 @@
 
 const $ = (id) => document.getElementById(id);
 let pendingPeerId = null;
+let updateDismissed = false;
 
 const KIND_LABEL = {
   pc: "PC",
@@ -138,6 +139,23 @@ function renderPeerList(peers) {
   }
 }
 
+function renderUpdateBar(state) {
+  const bar = $("updateBar");
+  const ver = state.appVersion ? `v${state.appVersion}` : "v—";
+  $("appVersion").textContent = ver;
+
+  const show =
+    !!state.updateAvailable &&
+    !!state.updateVersion &&
+    !updateDismissed;
+  if (!show) {
+    bar.classList.add("hidden");
+    return;
+  }
+  $("updateText").textContent = `Update available: ${ver} → v${state.updateVersion}`;
+  bar.classList.remove("hidden");
+}
+
 function render(state) {
   if (!state) return;
   $("deviceName").value = state.deviceName;
@@ -146,6 +164,7 @@ function render(state) {
   $("deviceMeta").textContent = `${selfKind} · id ${state.deviceId.slice(0, 8)}… · port ${state.listenPort} · ${lan}`;
   $("centerKind").textContent = selfKind;
   $("syncEnabled").checked = state.syncEnabled;
+  renderUpdateBar(state);
 
   const radar = $("radar");
   if (state.pairingActive && state.pairingCode) {
@@ -248,6 +267,15 @@ $("pairForm").onsubmit = async (e) => {
     $("pairError").textContent = String(err?.message || err);
     $("pairError").classList.remove("hidden");
   }
+};
+
+$("btnUpdate").onclick = async () => {
+  await window.clipshare.openUpdate();
+};
+
+$("btnDismissUpdate").onclick = () => {
+  updateDismissed = true;
+  $("updateBar").classList.add("hidden");
 };
 
 window.clipshare.onState(render);

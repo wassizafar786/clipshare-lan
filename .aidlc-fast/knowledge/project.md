@@ -15,4 +15,8 @@
 
 ## Desktop
 
+- App updates: package.json version is source of truth; check GitHub releases/latest and show dismissible update bar (openExternal) — no silent install in v1. (learned 2026-10-28) <!-- cid:261028-we-need-to-build-the-fea:b640483cf72f22c5 -->
+
+- Windows electron-builder: set win.signAndEditExecutable=false for unsigned local builds to avoid winCodeSign symlink privilege failures. (learned 2026-10-28) <!-- cid:261028-we-need-to-build-the-fea:3072dc8419f76d2e -->
+
 - Windows tray icons need opaque PNGs; empty/transparent NativeImage is invisible in the notification area. (learned 2026-10-28) <!-- cid:261028-fix-ship-feedback-show-d:30bc6c471f6fdcc7 -->

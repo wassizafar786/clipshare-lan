@@ -40,6 +40,11 @@ export interface AppStateSnapshot {
   peers: PeerInfo[];
   lastClipPreview: string | null;
   syncEnabled: boolean;
+  /** From package.json / electron app.getVersion(). */
+  appVersion: string;
+  updateAvailable: boolean;
+  updateVersion: string | null;
+  updateUrl: string | null;
 }
 
 export function deviceKindFromPlatform(platform = process.platform): DeviceKind {
