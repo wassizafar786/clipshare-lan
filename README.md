@@ -7,9 +7,11 @@ Inspired by ideas from [ClipPair](https://clippair.app/), [ClipNSync](https://cl
 ## Features (v0.1)
 
 - Background tray / menu-bar app + small UI
+- Radar-style LAN discovery + start-pairing flow
 - UDP LAN discovery + TCP sync
 - 6-digit pairing code → AES-256-GCM session key
 - Connected / paired device list
+- Desktop notifications when Wi‑Fi / LAN address changes or a paired device unpairs / goes offline
 - Echo protection
 - Built with **aidlc-fast** workflow
 
@@ -22,11 +24,11 @@ npm start
 
 Run the same app on a Mac and a Windows PC on the same Wi‑Fi:
 
-1. On device A: **Show code**
-2. On device B: select A → **Enter code**
+1. On device A: **Start pairing** (code appears in the radar center)
+2. On device B: tap A on the radar → **Enter code**
 3. Copy text on one → paste on the other
 
-Allow **local network / private network** firewall access when prompted.
+Allow **local network / private network** firewall access when prompted. Allow **notifications** for ClipShare / Electron so unpair and network-change alerts can appear.
 
 ## Verify (headless)
 

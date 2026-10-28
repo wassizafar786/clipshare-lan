@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("clipshare", {
   setName: (name: string): Promise<void> => ipcRenderer.invoke("name:set", name),
   addManualPeer: (host: string, port: number, name?: string): Promise<string> =>
     ipcRenderer.invoke("peer:manual", host, port, name),
+  unpairPeer: (peerId: string): Promise<void> => ipcRenderer.invoke("peer:unpair", peerId),
   onState: (cb: (s: AppStateSnapshot) => void) => {
     const handler = (_: unknown, s: AppStateSnapshot) => cb(s);
     ipcRenderer.on("state", handler);

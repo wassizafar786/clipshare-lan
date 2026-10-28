@@ -13,12 +13,19 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { ClipMeshNetwork } from "./net";
 import { startClipboardWatch, writeClipboardText } from "./clipboard-watch";
-import type { AppStateSnapshot } from "./types";
+import { notifyOnce } from "./notify";
+import type { AppStateSnapshot, PeerInfo } from "./types";
 
 let tray: Tray | null = null;
 let win: BrowserWindow | null = null;
 let net: ClipMeshNetwork | null = null;
 let stopWatch: (() => void) | null = null;
+let netPollTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Last known peer link state for transition notifications. */
+const peerLink = new Map<string, { paired: boolean; connected: boolean; name: string }>();
+let lastLanKey = "";
+let notifyReady = false;
 
 const storePath = () => join(app.getPath("userData"), "device.json");
 
@@ -44,6 +51,7 @@ function saveDevice(data: { id: string; name: string }): void {
 function pushState(): void {
   if (!net) return;
   const snap = enrichSnapshot(net.snapshot());
+  watchTransitions(snap);
   win?.webContents.send("state", snap);
 }
 
@@ -51,12 +59,76 @@ function enrichSnapshot(s: AppStateSnapshot): AppStateSnapshot {
   return s;
 }
 
+function lanKey(addresses: string[]): string {
+  return addresses.slice().sort().join(",");
+}
+
+function watchTransitions(snap: AppStateSnapshot): void {
+  const nextLan = lanKey(snap.localAddresses);
+  if (notifyReady && lastLanKey && nextLan !== lastLanKey) {
+    notifyOnce(
+      `lan:${lastLanKey}->${nextLan}`,
+      "ClipShare · Network changed",
+      nextLan
+        ? `Now on ${snap.localAddresses.join(", ")}`
+        : "No active LAN address — reconnect to Wi‑Fi",
+    );
+  }
+  lastLanKey = nextLan;
+
+  const seen = new Set<string>();
+  for (const peer of snap.peers) {
+    seen.add(peer.id);
+    maybeNotifyPeer(peer);
+  }
+  for (const [id, prev] of peerLink) {
+    if (seen.has(id)) continue;
+    if (prev.paired) {
+      notifyOnce(
+        `gone:${id}`,
+        "ClipShare · Device unpaired",
+        `${prev.name} is no longer on the network`,
+      );
+    }
+    peerLink.delete(id);
+  }
+}
+
+function maybeNotifyPeer(peer: PeerInfo): void {
+  const prev = peerLink.get(peer.id);
+  peerLink.set(peer.id, {
+    paired: peer.paired,
+    connected: peer.connected,
+    name: peer.name,
+  });
+  if (!notifyReady || !prev) return;
+
+  if (prev.paired && !peer.paired) {
+    notifyOnce(
+      `unpair:${peer.id}`,
+      "ClipShare · Device unpaired",
+      `${peer.name} was unpaired`,
+    );
+    return;
+  }
+  if (prev.paired && peer.paired && prev.connected && !peer.connected) {
+    notifyOnce(
+      `offline:${peer.id}`,
+      "ClipShare · Device offline",
+      `${peer.name} went offline`,
+    );
+  }
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
-    width: 380,
-    height: 520,
+    width: 420,
+    height: 720,
+    minWidth: 360,
+    minHeight: 480,
     show: false,
     resizable: true,
+    autoHideMenuBar: true,
     title: "ClipShare LAN",
     webPreferences: {
       preload: join(__dirname, "preload.js"),
@@ -155,6 +227,7 @@ function wireIpc(): void {
     (_e, host: string, port: number, name?: string) =>
       net?.addManualPeer(host, port, name) ?? "",
   );
+  ipcMain.handle("peer:unpair", (_e, peerId: string) => net?.unpairPeer(peerId));
 }
 
 app.whenReady().then(async () => {
@@ -175,9 +248,27 @@ app.whenReady().then(async () => {
   });
   await net.start();
 
+  // Seed link/LAN state before enabling notifications (avoid startup spam)
+  const seed = net.snapshot();
+  lastLanKey = lanKey(seed.localAddresses);
+  for (const peer of seed.peers) {
+    peerLink.set(peer.id, {
+      paired: peer.paired,
+      connected: peer.connected,
+      name: peer.name,
+    });
+  }
+  notifyReady = true;
+
   createWindow();
   buildTray();
   wireIpc();
+
+  // Poll LAN identity even when peer map is quiet
+  netPollTimer = setInterval(() => {
+    if (!net) return;
+    watchTransitions(net.snapshot());
+  }, 5000);
 
   stopWatch = startClipboardWatch(
     (text) => {
@@ -190,6 +281,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  if (netPollTimer) clearInterval(netPollTimer);
   stopWatch?.();
   net?.stop();
 });

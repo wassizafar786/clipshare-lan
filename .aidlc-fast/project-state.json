@@ -1,27 +1,179 @@
 {
   "version": 1,
-  "configuredAt": "2026-10-28T18:39:45.690Z",
+  "configuredAt": "2026-10-28T19:08:20.420Z",
   "packageVersion": "0.6.0",
-  "lastChangeAt": "2026-10-28T18:39:45.690Z",
-  "lastChange": "config",
+  "lastChangeAt": "2026-10-28T19:13:09.355Z",
+  "lastChange": "next:done",
   "summary": {
     "path": "D:\\Projects\\Personal\\clipshare-lan\\.aidlc-fast\\knowledge\\project-summary.md",
     "source": "existing",
     "reusedFrom": ".aidlc-fast/knowledge/project-summary.md",
-    "updatedAt": "2026-10-28T18:39:45.670Z"
+    "updatedAt": "2026-10-28T19:08:20.408Z"
   },
-  "activeIntent": null,
-  "runStatus": "idle",
-  "currentStage": null,
-  "scope": null,
+  "activeIntent": "Fix ship feedback: show device types (PC/Mac/iPhone/Mobile) on radar with correct circle layout, full default scroll in UI, and Cancel on enter-code must not trigger validation",
+  "runStatus": "done",
+  "currentStage": "done",
+  "scope": "bugfix",
   "changeLog": [
     {
-      "at": "2026-10-28T18:39:12.576Z",
+      "at": "2026-10-28T19:03:39.568Z",
+      "change": "complete:verify"
+    },
+    {
+      "at": "2026-10-28T19:03:39.584Z",
+      "change": "next:review"
+    },
+    {
+      "at": "2026-10-28T19:03:40.993Z",
+      "change": "next:review"
+    },
+    {
+      "at": "2026-10-28T19:03:58.189Z",
+      "change": "complete:review"
+    },
+    {
+      "at": "2026-10-28T19:03:58.202Z",
+      "change": "next:e2e"
+    },
+    {
+      "at": "2026-10-28T19:03:59.603Z",
+      "change": "next:e2e"
+    },
+    {
+      "at": "2026-10-28T19:05:08.110Z",
+      "change": "complete:e2e"
+    },
+    {
+      "at": "2026-10-28T19:05:08.123Z",
+      "change": "next:gate-ship"
+    },
+    {
+      "at": "2026-10-28T19:05:09.790Z",
+      "change": "next:gate-ship"
+    },
+    {
+      "at": "2026-10-28T19:07:32.255Z",
+      "change": "reject:gate-ship"
+    },
+    {
+      "at": "2026-10-28T19:08:20.420Z",
       "change": "config"
     },
     {
-      "at": "2026-10-28T18:39:45.690Z",
-      "change": "config"
+      "at": "2026-10-28T19:08:20.435Z",
+      "change": "start:bugfix"
+    },
+    {
+      "at": "2026-10-28T19:08:20.447Z",
+      "change": "next:intent"
+    },
+    {
+      "at": "2026-10-28T19:08:43.366Z",
+      "change": "complete:intent"
+    },
+    {
+      "at": "2026-10-28T19:08:43.379Z",
+      "change": "next:brief"
+    },
+    {
+      "at": "2026-10-28T19:08:44.805Z",
+      "change": "next:brief"
+    },
+    {
+      "at": "2026-10-28T19:10:24.163Z",
+      "change": "complete:brief"
+    },
+    {
+      "at": "2026-10-28T19:10:24.177Z",
+      "change": "next:gate-plan"
+    },
+    {
+      "at": "2026-10-28T19:10:25.661Z",
+      "change": "next:gate-plan"
+    },
+    {
+      "at": "2026-10-28T19:11:05.298Z",
+      "change": "approve:gate-plan"
+    },
+    {
+      "at": "2026-10-28T19:11:05.311Z",
+      "change": "complete:gate-plan"
+    },
+    {
+      "at": "2026-10-28T19:11:05.323Z",
+      "change": "next:build"
+    },
+    {
+      "at": "2026-10-28T19:12:11.270Z",
+      "change": "complete:build"
+    },
+    {
+      "at": "2026-10-28T19:12:11.282Z",
+      "change": "next:verify"
+    },
+    {
+      "at": "2026-10-28T19:12:12.745Z",
+      "change": "next:verify"
+    },
+    {
+      "at": "2026-10-28T19:12:22.522Z",
+      "change": "complete:verify"
+    },
+    {
+      "at": "2026-10-28T19:12:22.537Z",
+      "change": "next:e2e"
+    },
+    {
+      "at": "2026-10-28T19:12:24.107Z",
+      "change": "next:e2e"
+    },
+    {
+      "at": "2026-10-28T19:12:25.775Z",
+      "change": "complete:e2e"
+    },
+    {
+      "at": "2026-10-28T19:12:25.790Z",
+      "change": "next:gate-ship"
+    },
+    {
+      "at": "2026-10-28T19:12:27.197Z",
+      "change": "next:gate-ship"
+    },
+    {
+      "at": "2026-10-28T19:12:30.003Z",
+      "change": "next:gate-ship"
+    },
+    {
+      "at": "2026-10-28T19:12:53.071Z",
+      "change": "approve:gate-ship"
+    },
+    {
+      "at": "2026-10-28T19:12:53.094Z",
+      "change": "complete:gate-ship"
+    },
+    {
+      "at": "2026-10-28T19:12:53.113Z",
+      "change": "next:learn"
+    },
+    {
+      "at": "2026-10-28T19:13:03.412Z",
+      "change": "learn:261028-fix-ship-feedback-show-d:eced7df5fb30d77b"
+    },
+    {
+      "at": "2026-10-28T19:13:04.845Z",
+      "change": "learn:261028-fix-ship-feedback-show-d:d0681d2225119861"
+    },
+    {
+      "at": "2026-10-28T19:13:06.341Z",
+      "change": "learn:261028-fix-ship-feedback-show-d:30bc6c471f6fdcc7"
+    },
+    {
+      "at": "2026-10-28T19:13:09.342Z",
+      "change": "complete:learn"
+    },
+    {
+      "at": "2026-10-28T19:13:09.355Z",
+      "change": "next:done"
     }
   ]
 }

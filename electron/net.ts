@@ -12,7 +12,14 @@ import {
   encryptPayload,
   generatePairingCode,
 } from "./crypto-util";
-import type { AppStateSnapshot, PeerInfo, WireMessage } from "./types";
+import {
+  deviceKindFromPlatform,
+  normalizeDeviceKind,
+  type AppStateSnapshot,
+  type DeviceKind,
+  type PeerInfo,
+  type WireMessage,
+} from "./types";
 
 const DISCOVERY_PORT = 41234;
 const BROADCAST = "255.255.255.255";
@@ -40,6 +47,7 @@ export type ClipHandler = (text: string, fromPeer: string) => void;
 export class ClipMeshNetwork {
   readonly deviceId: string;
   deviceName: string;
+  readonly deviceKind: DeviceKind;
   listenPort = 0;
   syncEnabled = true;
 
@@ -69,6 +77,7 @@ export class ClipMeshNetwork {
   }) {
     this.deviceId = opts.deviceId;
     this.deviceName = opts.deviceName;
+    this.deviceKind = deviceKindFromPlatform();
     this.onClip = opts.onClip;
     this.onChange = opts.onChange;
   }
@@ -78,12 +87,31 @@ export class ClipMeshNetwork {
       deviceId: this.deviceId,
       deviceName: this.deviceName,
       listenPort: this.listenPort,
+      deviceKind: this.deviceKind,
+      localAddresses: localIpv4s().slice().sort(),
       pairingCode: this.pairingCode,
       pairingActive: this.pairingActive,
       peers: [...this.peers.values()].sort((a, b) => a.name.localeCompare(b.name)),
       lastClipPreview: null,
       syncEnabled: this.syncEnabled,
     };
+  }
+
+  /** Drop session with a peer (local unpair). */
+  unpairPeer(peerId: string): void {
+    this.sessionKeys.delete(peerId);
+    const socket = this.sockets.get(peerId);
+    if (socket) {
+      socket.destroy();
+      this.sockets.delete(peerId);
+    }
+    const p = this.peers.get(peerId);
+    if (p) {
+      p.paired = false;
+      p.connected = false;
+      this.peers.set(peerId, p);
+    }
+    this.onChange();
   }
 
   async start(): Promise<void> {
@@ -182,6 +210,7 @@ export class ClipMeshNetwork {
       lastSeen: Date.now(),
       paired: this.sessionKeys.has(id),
       connected: this.sockets.has(id),
+      kind: "unknown",
     });
     return id;
   }
@@ -213,6 +242,7 @@ export class ClipMeshNetwork {
         lastSeen: Date.now(),
         paired: this.sessionKeys.has(m.id),
         connected: this.sockets.has(m.id),
+        kind: normalizeDeviceKind(m.kind),
       });
     });
     this.udp.bind(DISCOVERY_PORT, () => {
@@ -231,6 +261,7 @@ export class ClipMeshNetwork {
       id: this.deviceId,
       name: this.deviceName,
       port: this.listenPort,
+      kind: this.deviceKind,
     } satisfies WireMessage);
     this.udp.send(payload, DISCOVERY_PORT, BROADCAST);
   }
@@ -239,6 +270,12 @@ export class ClipMeshNetwork {
     const prev = this.peers.get(peer.id);
     this.peers.set(peer.id, {
       ...peer,
+      kind:
+        peer.kind && peer.kind !== "unknown"
+          ? peer.kind
+          : prev?.kind && prev.kind !== "unknown"
+            ? prev.kind
+            : peer.kind || "unknown",
       paired: prev?.paired || peer.paired || this.sessionKeys.has(peer.id),
       connected: this.sockets.has(peer.id),
     });
@@ -345,6 +382,7 @@ export class ClipMeshNetwork {
         lastSeen: Date.now(),
         paired: true,
         connected: true,
+        kind: this.peers.get(msg.id)?.kind ?? "unknown",
       });
       this.send(msg.id, { type: "pair-ok", id: this.deviceId, name: this.deviceName });
       this.cancelPairing();
