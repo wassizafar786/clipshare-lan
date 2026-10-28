@@ -1,0 +1,8 @@
+{
+  "e2eCommand": null,
+  "sensors": {
+    "lint": "npm run lint --if-present",
+    "typecheck": "npm run typecheck --if-present",
+    "unit": "npm test --if-present"
+  }
+}

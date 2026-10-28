@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "configuredAt": "2026-10-28T18:39:45.690Z",
+  "packageVersion": "0.6.0",
+  "lastChangeAt": "2026-10-28T18:39:45.690Z",
+  "lastChange": "config",
+  "summary": {
+    "path": "D:\\Projects\\Personal\\clipshare-lan\\.aidlc-fast\\knowledge\\project-summary.md",
+    "source": "existing",
+    "reusedFrom": ".aidlc-fast/knowledge/project-summary.md",
+    "updatedAt": "2026-10-28T18:39:45.670Z"
+  },
+  "activeIntent": null,
+  "runStatus": "idle",
+  "currentStage": null,
+  "scope": null,
+  "changeLog": [
+    {
+      "at": "2026-10-28T18:39:12.576Z",
+      "change": "config"
+    },
+    {
+      "at": "2026-10-28T18:39:45.690Z",
+      "change": "config"
+    }
+  ]
+}

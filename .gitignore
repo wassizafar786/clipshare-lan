@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.aidlc-fast/audit/
+.aidlc-fast/state.json
+*.log

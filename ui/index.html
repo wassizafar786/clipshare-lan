@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>ClipShare LAN</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>ClipShare</h1>
+      <p class="sub">Same Wi‑Fi clipboard · tray / menu bar</p>
+    </header>
+
+    <section class="card">
+      <label>This device</label>
+      <input id="deviceName" type="text" />
+      <p class="meta" id="deviceMeta"></p>
+      <label class="row">
+        <input id="syncEnabled" type="checkbox" checked />
+        Sync clipboard
+      </label>
+    </section>
+
+    <section class="card">
+      <div class="row between">
+        <h2>Pairing</h2>
+        <button id="btnPair" type="button">Show code</button>
+      </div>
+      <p id="pairCode" class="code hidden">------</p>
+      <p class="hint">On the other PC/Mac: pick this device below and enter the code.</p>
+      <button id="btnCancelPair" class="ghost hidden" type="button">Cancel pairing</button>
+    </section>
+
+    <section class="card">
+      <h2>Devices on Wi‑Fi</h2>
+      <ul id="peers"></ul>
+      <p class="hint">Discovery uses UDP broadcast on the LAN. Allow local network in the firewall if asked.</p>
+      <div class="manual">
+        <label>Manual host:port (fallback)</label>
+        <div class="row">
+          <input id="manualHost" type="text" placeholder="192.168.1.20" />
+          <input id="manualPort" type="text" placeholder="port" style="max-width: 90px" />
+          <button id="btnManual" type="button">Add</button>
+        </div>
+        <p class="hint">Other device shows its port under “This device”.</p>
+      </div>
+    </section>
+
+    <dialog id="pairDialog">
+      <form method="dialog" id="pairForm">
+        <h3>Enter pairing code</h3>
+        <p id="pairPeerName"></p>
+        <input id="pairInput" inputmode="numeric" maxlength="6" placeholder="6-digit code" required />
+        <menu>
+          <button value="cancel" type="submit">Cancel</button>
+          <button id="pairSubmit" value="ok" type="submit">Connect</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>

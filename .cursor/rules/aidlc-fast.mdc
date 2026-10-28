@@ -1,0 +1,12 @@
+---
+description: When the user runs /aidlc-fast, follow the CLI under the hood — chat checkboxes only for humans.
+globs:
+alwaysApply: false
+---
+
+# aidlc-fast
+
+- Humans: **`/aidlc-fast`** + checkbox replies only (Plan check / Ship check).
+- You run the CLI. Never show `npx`, stage ids, or “type APPROVE”.
+- After a chat reply at a check: `approve|reject --human-reply "<exact words>"`.
+- Never invent `--human-reply`. See root `AGENTS.md`.

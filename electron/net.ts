@@ -1,0 +1,390 @@
+import { createSocket, type Socket as DgramSocket } from "node:dgram";
+import net, {
+  createServer,
+  type Server as NetServer,
+  type Socket as NetSocket,
+} from "node:net";
+import { randomBytes } from "node:crypto";
+import { networkInterfaces } from "node:os";
+import {
+  decryptPayload,
+  deriveKeyFromPairingCode,
+  encryptPayload,
+  generatePairingCode,
+} from "./crypto-util";
+import type { AppStateSnapshot, PeerInfo, WireMessage } from "./types";
+
+const DISCOVERY_PORT = 41234;
+const BROADCAST = "255.255.255.255";
+
+function localIpv4s(): string[] {
+  const out: string[] = [];
+  for (const list of Object.values(networkInterfaces())) {
+    for (const n of list ?? []) {
+      if (n.family === "IPv4" && !n.internal) out.push(n.address);
+    }
+  }
+  return out;
+}
+
+function parseLine(raw: string): WireMessage | null {
+  try {
+    return JSON.parse(raw) as WireMessage;
+  } catch {
+    return null;
+  }
+}
+
+export type ClipHandler = (text: string, fromPeer: string) => void;
+
+export class ClipMeshNetwork {
+  readonly deviceId: string;
+  deviceName: string;
+  listenPort = 0;
+  syncEnabled = true;
+
+  private pairingCode: string | null = null;
+  private pairingSalt: Buffer | null = null;
+  private pairingKey: Buffer | null = null;
+  private pairingActive = false;
+  private seq = 0;
+  private lastAppliedHash = "";
+  private suppressingEchoUntil = 0;
+
+  private peers = new Map<string, PeerInfo>();
+  private sessionKeys = new Map<string, Buffer>();
+  private sockets = new Map<string, NetSocket>();
+
+  private udp: DgramSocket | null = null;
+  private tcp: NetServer | null = null;
+  private helloTimer: ReturnType<typeof setInterval> | null = null;
+  private onClip: ClipHandler;
+  private onChange: () => void;
+
+  constructor(opts: {
+    deviceId: string;
+    deviceName: string;
+    onClip: ClipHandler;
+    onChange: () => void;
+  }) {
+    this.deviceId = opts.deviceId;
+    this.deviceName = opts.deviceName;
+    this.onClip = opts.onClip;
+    this.onChange = opts.onChange;
+  }
+
+  snapshot(): AppStateSnapshot {
+    return {
+      deviceId: this.deviceId,
+      deviceName: this.deviceName,
+      listenPort: this.listenPort,
+      pairingCode: this.pairingCode,
+      pairingActive: this.pairingActive,
+      peers: [...this.peers.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      lastClipPreview: null,
+      syncEnabled: this.syncEnabled,
+    };
+  }
+
+  async start(): Promise<void> {
+    await this.startTcp();
+    this.startUdp();
+    this.helloTimer = setInterval(() => this.broadcastHello(), 3000);
+    this.broadcastHello();
+  }
+
+  stop(): void {
+    if (this.helloTimer) clearInterval(this.helloTimer);
+    this.udp?.close();
+    this.tcp?.close();
+    for (const s of this.sockets.values()) s.destroy();
+    this.sockets.clear();
+  }
+
+  beginPairing(): string {
+    this.pairingCode = generatePairingCode();
+    this.pairingSalt = randomBytes(16);
+    this.pairingKey = deriveKeyFromPairingCode(this.pairingCode, this.pairingSalt);
+    this.pairingActive = true;
+    this.onChange();
+    return this.pairingCode;
+  }
+
+  cancelPairing(): void {
+    this.pairingActive = false;
+    this.pairingCode = null;
+    this.pairingSalt = null;
+    this.pairingKey = null;
+    this.onChange();
+  }
+
+  /** Enter code shown on the other device. */
+  async pairWithCode(peerId: string, code: string): Promise<void> {
+    const peer = this.peers.get(peerId);
+    if (!peer) throw new Error("Peer not found — wait for discovery");
+    const salt = randomBytes(16);
+    const key = deriveKeyFromPairingCode(code, salt);
+    this.sessionKeys.set(peerId, key);
+    await this.ensureConnected(peer);
+    this.send(peerId, {
+      type: "pair-confirm",
+      id: this.deviceId,
+      name: this.deviceName,
+      code,
+      saltB64: salt.toString("base64"),
+    });
+  }
+
+  async broadcastClipboard(text: string): Promise<void> {
+    if (!this.syncEnabled) return;
+    if (Date.now() < this.suppressingEchoUntil) return;
+    const hash = Buffer.from(text).toString("base64url").slice(0, 32);
+    if (hash === this.lastAppliedHash) return;
+    this.seq += 1;
+    for (const [peerId, key] of this.sessionKeys) {
+      const peer = this.peers.get(peerId);
+      if (!peer?.paired) continue;
+      try {
+        await this.ensureConnected(peer);
+        this.send(peerId, {
+          type: "clip",
+          id: this.deviceId,
+          cipherB64: encryptPayload(text, key),
+          seq: this.seq,
+        });
+      } catch {
+        // peer offline
+      }
+    }
+  }
+
+  markLocalClipboard(text: string): void {
+    this.lastAppliedHash = Buffer.from(text).toString("base64url").slice(0, 32);
+  }
+
+  setSyncEnabled(on: boolean): void {
+    this.syncEnabled = on;
+    this.onChange();
+  }
+
+  isSuppressingEcho(): boolean {
+    return Date.now() < this.suppressingEchoUntil;
+  }
+
+  /** Manual host:port when UDP discovery is blocked. */
+  addManualPeer(host: string, port: number, name?: string): string {
+    const id = `manual:${host}:${port}`;
+    this.upsertPeer({
+      id,
+      name: name?.trim() || `${host}:${port}`,
+      host,
+      port,
+      lastSeen: Date.now(),
+      paired: this.sessionKeys.has(id),
+      connected: this.sockets.has(id),
+    });
+    return id;
+  }
+
+  private async startTcp(): Promise<void> {
+    this.tcp = createServer((socket) => this.attachSocket(socket));
+    await new Promise<void>((resolve, reject) => {
+      this.tcp!.once("error", reject);
+      this.tcp!.listen(0, "0.0.0.0", () => {
+        const addr = this.tcp!.address();
+        if (addr && typeof addr === "object") this.listenPort = addr.port;
+        resolve();
+      });
+    });
+  }
+
+  private startUdp(): void {
+    this.udp = createSocket({ type: "udp4", reuseAddr: true });
+    this.udp.on("message", (msg, rinfo) => {
+      const m = parseLine(msg.toString("utf8"));
+      if (!m || m.type !== "hello") return;
+      if (m.id === this.deviceId) return;
+      if (localIpv4s().includes(rinfo.address) && m.port === this.listenPort) return;
+      this.upsertPeer({
+        id: m.id,
+        name: m.name,
+        host: rinfo.address,
+        port: m.port,
+        lastSeen: Date.now(),
+        paired: this.sessionKeys.has(m.id),
+        connected: this.sockets.has(m.id),
+      });
+    });
+    this.udp.bind(DISCOVERY_PORT, () => {
+      try {
+        this.udp!.setBroadcast(true);
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
+  private broadcastHello(): void {
+    if (!this.udp || !this.listenPort) return;
+    const payload = JSON.stringify({
+      type: "hello",
+      id: this.deviceId,
+      name: this.deviceName,
+      port: this.listenPort,
+    } satisfies WireMessage);
+    this.udp.send(payload, DISCOVERY_PORT, BROADCAST);
+  }
+
+  private upsertPeer(peer: PeerInfo): void {
+    const prev = this.peers.get(peer.id);
+    this.peers.set(peer.id, {
+      ...peer,
+      paired: prev?.paired || peer.paired || this.sessionKeys.has(peer.id),
+      connected: this.sockets.has(peer.id),
+    });
+    this.onChange();
+  }
+
+  private attachSocket(socket: NetSocket, knownId?: string): void {
+    let buf = "";
+    let peerId = knownId ?? "";
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => {
+      buf += chunk;
+      let idx: number;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx);
+        buf = buf.slice(idx + 1);
+        const msg = parseLine(line);
+        if (!msg) continue;
+        if ("id" in msg && msg.id) peerId = msg.id;
+        void this.handleMessage(msg, socket, peerId);
+      }
+    });
+    socket.on("close", () => {
+      if (peerId) {
+        this.sockets.delete(peerId);
+        const p = this.peers.get(peerId);
+        if (p) {
+          p.connected = false;
+          this.peers.set(peerId, p);
+          this.onChange();
+        }
+      }
+    });
+  }
+
+  private async ensureConnected(peer: PeerInfo): Promise<void> {
+    if (this.sockets.has(peer.id)) return;
+    await new Promise<void>((resolve, reject) => {
+      const socket = new net.Socket();
+      const timer = setTimeout(() => {
+        socket.destroy();
+        reject(new Error("connect timeout"));
+      }, 4000);
+      socket.connect(peer.port, peer.host, () => {
+        clearTimeout(timer);
+        this.sockets.set(peer.id, socket);
+        this.attachSocket(socket, peer.id);
+        peer.connected = true;
+        this.peers.set(peer.id, peer);
+        this.onChange();
+        resolve();
+      });
+      socket.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  }
+
+  private send(peerId: string, msg: WireMessage): void {
+    const socket = this.sockets.get(peerId);
+    if (!socket) throw new Error("not connected");
+    socket.write(JSON.stringify(msg) + "\n");
+  }
+
+  private async handleMessage(
+    msg: WireMessage,
+    socket: NetSocket,
+    peerId: string,
+  ): Promise<void> {
+    if (msg.type === "hello") return;
+
+    if (msg.type === "pair-confirm") {
+      if (!this.pairingActive || !this.pairingCode || !this.pairingSalt) {
+        socket.write(
+          JSON.stringify({
+            type: "pair-reject",
+            id: this.deviceId,
+            reason: "pairing not active",
+          }) + "\n",
+        );
+        return;
+      }
+      if (msg.code !== this.pairingCode) {
+        socket.write(
+          JSON.stringify({
+            type: "pair-reject",
+            id: this.deviceId,
+            reason: "bad code",
+          }) + "\n",
+        );
+        return;
+      }
+      // Prefer initiator salt so both derive the same key from the code+salt they exchange
+      const salt = Buffer.from(msg.saltB64, "base64");
+      const key = deriveKeyFromPairingCode(msg.code, salt);
+      this.sessionKeys.set(msg.id, key);
+      this.sockets.set(msg.id, socket);
+      this.upsertPeer({
+        id: msg.id,
+        name: msg.name,
+        host: socket.remoteAddress?.replace("::ffff:", "") ?? "unknown",
+        port: socket.remotePort ?? 0,
+        lastSeen: Date.now(),
+        paired: true,
+        connected: true,
+      });
+      this.send(msg.id, { type: "pair-ok", id: this.deviceId, name: this.deviceName });
+      this.cancelPairing();
+      return;
+    }
+
+    if (msg.type === "pair-ok") {
+      this.sessionKeys.set(msg.id, this.sessionKeys.get(msg.id)!);
+      const p = this.peers.get(msg.id);
+      if (p) {
+        p.paired = true;
+        p.connected = true;
+        this.peers.set(msg.id, p);
+      }
+      this.sockets.set(msg.id, socket);
+      this.onChange();
+      return;
+    }
+
+    if (msg.type === "clip") {
+      const key = this.sessionKeys.get(msg.id);
+      if (!key) return;
+      try {
+        const text = decryptPayload(msg.cipherB64, key);
+        this.suppressingEchoUntil = Date.now() + 1500;
+        this.lastAppliedHash = Buffer.from(text).toString("base64url").slice(0, 32);
+        this.onClip(text, msg.id);
+      } catch {
+        // bad key / tamper
+      }
+      return;
+    }
+  }
+}
+
+/** Pure helpers exported for smoke tests (no sockets). */
+export const protocolTest = {
+  deriveKeyFromPairingCode,
+  encryptPayload,
+  decryptPayload,
+  generatePairingCode,
+  localIpv4s,
+};
