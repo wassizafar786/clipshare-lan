@@ -1,30 +1,30 @@
 # aidlc-fast state
 
 ## Project
-- **configured:** 2026-10-28T19:20:06.161Z
+- **configured:** 2026-10-29T15:09:04.817Z
 - **package:** 0.6.0
-- **lastChange:** next:done @ 2026-10-28T20:17:44.599Z
+- **lastChange:** next:done @ 2026-10-29T15:17:02.731Z
 - **summary:** existing (from .aidlc-fast/knowledge/project-summary.md)
 - **summaryPath:** `D:\Projects\Personal\clipshare-lan\.aidlc-fast\knowledge\project-summary.md`
 
 ## Active run
 - **status:** done
-- **scope:** feature
-- **intent:** we need to build the featuer where we will give the option to user to update the app. 1. Write the script to generate the build published for mac and windows 2. Give the version number for the app and if any verson got pushed to Git it shuold show the bar to update the app etc
+- **scope:** bugfix
+- **intent:** we got some issues 1. After installing the exe unable to locate pairing devices on mac and windows 2. Lost positions where I can add manually pin code to pair 3. If I quit the app from one machine on other machine was still showing 4. Print company logo AsolutionsZ with powered by 5. Update should be download as update version on both machines
 - **currentStage:** done
-- **completed:** intent → brief → gate-plan → build → verify → review → e2e → gate-ship → learn → done
+- **completed:** intent → brief → gate-plan → build → verify → e2e → gate-ship → learn → done
 - **gate-plan:** approved
 - **gate-ship:** approved
-- **updated:** 2026-10-28T20:17:44.593Z
+- **updated:** 2026-10-29T15:17:02.724Z
 
 ## Recent changes
-- 2026-10-28T20:17:44.599Z: next:done
-- 2026-10-28T20:17:44.586Z: complete:learn
-- 2026-10-28T20:17:43.193Z: learn:261028-we-need-to-build-the-fea:b640483cf72f22c5
-- 2026-10-28T20:17:41.778Z: learn:261028-we-need-to-build-the-fea:3072dc8419f76d2e
-- 2026-10-28T20:17:32.455Z: next:learn
-- 2026-10-28T20:17:32.442Z: complete:gate-ship
-- 2026-10-28T20:17:32.428Z: approve:gate-ship
-- 2026-10-28T19:27:36.035Z: next:gate-ship
-- 2026-10-28T19:27:32.623Z: next:gate-ship
-- 2026-10-28T19:27:31.079Z: next:gate-ship
+- 2026-10-29T15:17:02.731Z: next:done
+- 2026-10-29T15:17:02.716Z: complete:learn
+- 2026-10-29T15:17:01.186Z: learn:261029-we-got-some-issues-1-aft:f9e693ae6a019eed
+- 2026-10-29T15:16:59.763Z: learn:261029-we-got-some-issues-1-aft:53a1a9bb3736df57
+- 2026-10-29T15:16:45.239Z: next:learn
+- 2026-10-29T15:16:45.223Z: complete:gate-ship
+- 2026-10-29T15:16:45.208Z: approve:gate-ship
+- 2026-10-29T15:15:02.025Z: next:gate-ship
+- 2026-10-29T15:14:59.176Z: next:gate-ship
+- 2026-10-29T15:14:56.403Z: next:gate-ship

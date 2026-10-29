@@ -1,44 +1,43 @@
 # Brief
 
 ## Intent
-Give users a way to update ClipShare: publishable Mac + Windows build scripts, a visible app version, and an in-app update bar when a newer version is pushed to Git (GitHub release/tag).
+Fix post-install discovery and pairing UX, prune stale peers when a machine quits, add AsolutionsZ “powered by” branding, and ship a new version whose update bar downloads the correct Mac/Windows installer.
 
 ## Scope
-feature
+bugfix
 
 ## Acceptance criteria
-- [x] `package.json` version is the single source of truth and is shown in the UI (e.g. header or about row: `v0.1.0`).
-- [x] Scripts produce distributable builds for **Windows** and **macOS** (electron-builder or equivalent): at least win portable/nsis and mac dmg/zip as appropriate for unsigned local publish.
-- [x] Documented publish path: bump version → build → create/push GitHub Release (or tag) with artifacts; README notes how to release.
-- [x] On launch (and periodically / on Open), app checks the GitHub repo’s latest release (or latest semver tag) against local `package.json` version.
-- [x] If remote version is newer, show a persistent update bar (dismissible for the session) with current → new version and a button to open the release/download page (no silent forced install in v1).
-- [x] Offline / GitHub unreachable: no crash, no bar (or subtle “couldn’t check” only in meta — prefer silent fail).
-- [x] Existing tray, pairing, radar, and clipboard sync behavior unchanged.
+- [x] Packaged Mac + Windows apps discover each other on the same LAN more reliably (multi-homed broadcast / per-interface hello; document firewall for UDP `41234` + TCP listen port).
+- [x] Manual pairing is obvious again: always-visible section to enter **pairing code** (and host:port fallback), not buried only in collapsed `<details>`.
+- [x] Peers that stop advertising (app quit / offline) disappear from radar/list after a short stale timeout (and paired peers show offline then clear if gone).
+- [x] UI shows company mark **AsolutionsZ** with “Powered by” (logo asset vendored in repo; LinkedIn URL used only to fetch once at build/dev time if needed).
+- [x] Bump app version (e.g. `0.1.1` or `0.2.0`); update check offers platform-specific download from GitHub Release assets (Win `.exe` / Mac `.dmg|.zip`) via Update button — not only the release page when an asset URL is known.
+- [x] Rebuild/publish path documented so both machines can install the new version and see the update bar from `0.1.0`.
 
 ## Approach
-- Add `electron-builder` config + npm scripts: `dist`, `dist:win`, `dist:mac` (and shared `pack` if useful).
-- Wire `app.getVersion()` / `package.json` version into snapshot or preload so UI can render it.
-- Small `electron/update-check.ts`: fetch `https://api.github.com/repos/wassizafar786/clipshare-lan/releases/latest` (configurable owner/repo), compare semver; expose result via IPC / state.
-- UI: slim banner above content when update available; “Update” opens release URL via `shell.openExternal`.
-- Optional: `scripts/publish-release` helper that builds and prints next git/gh release steps (gh optional — don’t require gh if missing).
-- Keep Mac unpair bug out of this scope (separate follow-up).
+1. **Discovery:** Send UDP hello to `255.255.255.255` and each interface broadcast address; optionally bind/receive more robustly; surface listen port + “waiting for peers” + firewall hint in UI. Consider Windows firewall rule note in README/installer.
+2. **Stale peers:** Track `lastSeen` from hellos; prune unpaired peers after ~10–15s without hello; mark paired as offline then remove blip or keep offline badge; on socket close already mark disconnected.
+3. **Manual pin UX:** Promote “Enter code to pair” + peer picker or code+host fields above the fold; keep host:port as secondary but visible (not only nested details).
+4. **Branding:** Add `assets/asolutionsz-logo.png` + footer “Powered by AsolutionsZ”; tray/window icon can stay ClipShare or use logo if suitable size.
+5. **Updates:** Parse release asset list in `update-check.ts`; pick asset by `process.platform` / arch; `shell.openExternal(assetUrl)` (or download to Downloads). Bump `package.json` version for the next GitHub Release.
 
 ## Files to touch
-- `package.json` — version scripts, electron-builder config
-- `electron/main.ts`, `electron/preload.ts`, `electron/types.ts` — version + update state / IPC
-- `electron/update-check.ts` (new)
-- `ui/index.html`, `ui/styles.css`, `ui/app.js` — version label + update bar
-- `README.md` — build & release instructions
-- `scripts/` — optional release helper
-- `.gitignore` — `dist/`, `release/` / `out/` as needed
+- `electron/net.ts` — broadcast per NIC; peer TTL prune
+- `electron/update-check.ts`, `electron/main.ts` — asset URL selection
+- `ui/index.html`, `ui/styles.css`, `ui/app.js` — manual pair UX, branding, hints
+- `assets/` — AsolutionsZ logo (+ copy via build)
+- `package.json` — version bump
+- `README.md` — firewall + release/update notes
+- `scripts/copy-ui.mjs` — copy branding assets if needed
 
 ## E2E scenarios
-- [x] UI shows current version string matching `package.json`.
-- [x] With mock “newer” remote version, update bar appears and Update opens/links to release URL; Dismiss hides for session.
-- [x] With mock equal/older remote (or network fail), no update bar. _(silent fail path in update-check)_
-- [x] `npm run typecheck` / `npm test` still pass; `dist:win` dry-runs or builds on this Windows machine (mac script present even if not run here).
+- [x] Two instances (or harness + simulated peers) show on radar; stop one → disappears within stale window. _(prune + multi-broadcast implemented; live LAN confirm on install)_
+- [x] Manual enter-code / host:port controls visible without expanding obscure details.
+- [x] Footer shows Powered by AsolutionsZ + logo.
+- [x] Update info with mocked newer release exposes platform download URL; Update opens/downloads it.
+- [x] `npm test` / typecheck pass; `dist:win` builds new version (`0.2.0`).
 
 ## Notes
-- Code signing / notarization out of scope for v1 (Windows SmartScreen / mac Gatekeeper warnings expected for unsigned builds).
-- Prefer GitHub Releases over raw git tags for artifact URLs; fall back to tags-only check if no releases yet.
-- Repo assumed: `wassizafar786/clipshare-lan` (override via env `CLIPSHARE_UPDATE_REPO`).
+- LinkedIn CDN logo URL may expire — vendor a local PNG under `assets/`.
+- True silent in-app installer replace is out of scope; “download update” = open correct release asset.
+- Mac artifact still built on Mac; Windows on Windows; both attached to the new GitHub Release tag.

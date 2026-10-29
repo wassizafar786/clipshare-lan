@@ -436,15 +436,39 @@ button.tiny {
   border-color: var(--warn);
 }
 
-.manual {
-  margin-top: 12px;
+.subhead {
+  margin: 16px 0 6px;
+  font-size: 0.9rem;
 }
 
-.manual summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 0.8rem;
+select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
   margin-bottom: 8px;
+}
+
+.powered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 20px 0 8px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.powered img {
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.powered strong {
+  color: var(--text);
+  font-weight: 700;
 }
 
 dialog {

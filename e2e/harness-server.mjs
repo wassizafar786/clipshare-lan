@@ -17,10 +17,10 @@ window.clipshare = {
     listenPort: 5555,
     deviceKind: "pc",
     localAddresses: ["192.168.1.10"],
-    appVersion: "0.1.0",
+    appVersion: "0.2.0",
     updateAvailable: true,
-    updateVersion: "0.2.0",
-    updateUrl: "https://github.com/wassizafar786/clipshare-lan/releases",
+    updateVersion: "0.2.1",
+    updateUrl: "https://github.com/wassizafar786/clipshare-lan/releases/download/v0.2.1/ClipShare-LAN-0.2.1-win-x64.exe",
     pairingCode: null,
     pairingActive: false,
     peers: [

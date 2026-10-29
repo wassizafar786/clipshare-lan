@@ -1,140 +1,20 @@
 {
   "version": 1,
-  "configuredAt": "2026-10-28T19:20:06.161Z",
+  "configuredAt": "2026-10-29T15:09:04.817Z",
   "packageVersion": "0.6.0",
-  "lastChangeAt": "2026-10-28T20:17:44.599Z",
+  "lastChangeAt": "2026-10-29T15:17:02.731Z",
   "lastChange": "next:done",
   "summary": {
     "path": "D:\\Projects\\Personal\\clipshare-lan\\.aidlc-fast\\knowledge\\project-summary.md",
     "source": "existing",
     "reusedFrom": ".aidlc-fast/knowledge/project-summary.md",
-    "updatedAt": "2026-10-28T19:20:06.151Z"
+    "updatedAt": "2026-10-29T15:09:04.764Z"
   },
-  "activeIntent": "we need to build the featuer where we will give the option to user to update the app. 1. Write the script to generate the build published for mac and windows 2. Give the version number for the app and if any verson got pushed to Git it shuold show the bar to update the app etc",
+  "activeIntent": "we got some issues 1. After installing the exe unable to locate pairing devices on mac and windows 2. Lost positions where I can add manually pin code to pair 3. If I quit the app from one machine on other machine was still showing 4. Print company logo AsolutionsZ with powered by 5. Update should be download as update version on both machines",
   "runStatus": "done",
   "currentStage": "done",
-  "scope": "feature",
+  "scope": "bugfix",
   "changeLog": [
-    {
-      "at": "2026-10-28T19:13:03.412Z",
-      "change": "learn:261028-fix-ship-feedback-show-d:eced7df5fb30d77b"
-    },
-    {
-      "at": "2026-10-28T19:13:04.845Z",
-      "change": "learn:261028-fix-ship-feedback-show-d:d0681d2225119861"
-    },
-    {
-      "at": "2026-10-28T19:13:06.341Z",
-      "change": "learn:261028-fix-ship-feedback-show-d:30bc6c471f6fdcc7"
-    },
-    {
-      "at": "2026-10-28T19:13:09.342Z",
-      "change": "complete:learn"
-    },
-    {
-      "at": "2026-10-28T19:13:09.355Z",
-      "change": "next:done"
-    },
-    {
-      "at": "2026-10-28T19:15:48.275Z",
-      "change": "config"
-    },
-    {
-      "at": "2026-10-28T19:15:48.290Z",
-      "change": "start:bugfix"
-    },
-    {
-      "at": "2026-10-28T19:15:48.304Z",
-      "change": "next:intent"
-    },
-    {
-      "at": "2026-10-28T19:20:06.161Z",
-      "change": "config"
-    },
-    {
-      "at": "2026-10-28T19:20:06.175Z",
-      "change": "start:feature"
-    },
-    {
-      "at": "2026-10-28T19:20:06.187Z",
-      "change": "next:intent"
-    },
-    {
-      "at": "2026-10-28T19:20:18.424Z",
-      "change": "complete:intent"
-    },
-    {
-      "at": "2026-10-28T19:20:18.437Z",
-      "change": "next:brief"
-    },
-    {
-      "at": "2026-10-28T19:20:19.839Z",
-      "change": "next:brief"
-    },
-    {
-      "at": "2026-10-28T19:20:48.767Z",
-      "change": "complete:brief"
-    },
-    {
-      "at": "2026-10-28T19:20:48.780Z",
-      "change": "next:gate-plan"
-    },
-    {
-      "at": "2026-10-28T19:20:50.187Z",
-      "change": "next:gate-plan"
-    },
-    {
-      "at": "2026-10-28T19:22:11.259Z",
-      "change": "approve:gate-plan"
-    },
-    {
-      "at": "2026-10-28T19:22:11.272Z",
-      "change": "complete:gate-plan"
-    },
-    {
-      "at": "2026-10-28T19:22:11.285Z",
-      "change": "next:build"
-    },
-    {
-      "at": "2026-10-28T19:27:14.584Z",
-      "change": "complete:build"
-    },
-    {
-      "at": "2026-10-28T19:27:14.596Z",
-      "change": "next:verify"
-    },
-    {
-      "at": "2026-10-28T19:27:16.024Z",
-      "change": "next:verify"
-    },
-    {
-      "at": "2026-10-28T19:27:25.401Z",
-      "change": "complete:verify"
-    },
-    {
-      "at": "2026-10-28T19:27:25.413Z",
-      "change": "next:review"
-    },
-    {
-      "at": "2026-10-28T19:27:26.830Z",
-      "change": "next:review"
-    },
-    {
-      "at": "2026-10-28T19:27:28.240Z",
-      "change": "complete:review"
-    },
-    {
-      "at": "2026-10-28T19:27:28.253Z",
-      "change": "next:e2e"
-    },
-    {
-      "at": "2026-10-28T19:27:29.626Z",
-      "change": "next:e2e"
-    },
-    {
-      "at": "2026-10-28T19:27:31.067Z",
-      "change": "complete:e2e"
-    },
     {
       "at": "2026-10-28T19:27:31.079Z",
       "change": "next:gate-ship"
@@ -173,6 +53,126 @@
     },
     {
       "at": "2026-10-28T20:17:44.599Z",
+      "change": "next:done"
+    },
+    {
+      "at": "2026-10-29T15:09:04.817Z",
+      "change": "config"
+    },
+    {
+      "at": "2026-10-29T15:09:04.843Z",
+      "change": "start:bugfix"
+    },
+    {
+      "at": "2026-10-29T15:09:04.989Z",
+      "change": "next:intent"
+    },
+    {
+      "at": "2026-10-29T15:09:28.928Z",
+      "change": "complete:intent"
+    },
+    {
+      "at": "2026-10-29T15:09:28.941Z",
+      "change": "next:brief"
+    },
+    {
+      "at": "2026-10-29T15:09:30.390Z",
+      "change": "next:brief"
+    },
+    {
+      "at": "2026-10-29T15:10:05.053Z",
+      "change": "complete:brief"
+    },
+    {
+      "at": "2026-10-29T15:10:05.070Z",
+      "change": "next:gate-plan"
+    },
+    {
+      "at": "2026-10-29T15:10:07.157Z",
+      "change": "next:gate-plan"
+    },
+    {
+      "at": "2026-10-29T15:11:29.337Z",
+      "change": "approve:gate-plan"
+    },
+    {
+      "at": "2026-10-29T15:11:29.352Z",
+      "change": "complete:gate-plan"
+    },
+    {
+      "at": "2026-10-29T15:11:29.366Z",
+      "change": "next:build"
+    },
+    {
+      "at": "2026-10-29T15:14:41.226Z",
+      "change": "complete:build"
+    },
+    {
+      "at": "2026-10-29T15:14:41.240Z",
+      "change": "next:verify"
+    },
+    {
+      "at": "2026-10-29T15:14:42.682Z",
+      "change": "next:verify"
+    },
+    {
+      "at": "2026-10-29T15:14:52.181Z",
+      "change": "complete:verify"
+    },
+    {
+      "at": "2026-10-29T15:14:52.194Z",
+      "change": "next:e2e"
+    },
+    {
+      "at": "2026-10-29T15:14:53.604Z",
+      "change": "next:e2e"
+    },
+    {
+      "at": "2026-10-29T15:14:54.996Z",
+      "change": "complete:e2e"
+    },
+    {
+      "at": "2026-10-29T15:14:55.007Z",
+      "change": "next:gate-ship"
+    },
+    {
+      "at": "2026-10-29T15:14:56.403Z",
+      "change": "next:gate-ship"
+    },
+    {
+      "at": "2026-10-29T15:14:59.176Z",
+      "change": "next:gate-ship"
+    },
+    {
+      "at": "2026-10-29T15:15:02.025Z",
+      "change": "next:gate-ship"
+    },
+    {
+      "at": "2026-10-29T15:16:45.208Z",
+      "change": "approve:gate-ship"
+    },
+    {
+      "at": "2026-10-29T15:16:45.223Z",
+      "change": "complete:gate-ship"
+    },
+    {
+      "at": "2026-10-29T15:16:45.239Z",
+      "change": "next:learn"
+    },
+    {
+      "at": "2026-10-29T15:16:59.763Z",
+      "change": "learn:261029-we-got-some-issues-1-aft:53a1a9bb3736df57"
+    },
+    {
+      "at": "2026-10-29T15:17:01.186Z",
+      "change": "learn:261029-we-got-some-issues-1-aft:f9e693ae6a019eed"
+    },
+    {
+      "at": "2026-10-29T15:17:02.716Z",
+      "change": "complete:learn"
+    },
+    {
+      "at": "2026-10-29T15:17:02.731Z",
       "change": "next:done"
     }
   ]

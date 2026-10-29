@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+      content="default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'"
     />
     <title>ClipShare LAN</title>
     <link rel="stylesheet" href="styles.css" />
@@ -13,7 +13,7 @@
     <div id="updateBar" class="update-bar hidden" role="status">
       <span id="updateText">A newer version is available.</span>
       <div class="row">
-        <button id="btnUpdate" type="button">Update</button>
+        <button id="btnUpdate" type="button">Download update</button>
         <button id="btnDismissUpdate" type="button" class="ghost">Dismiss</button>
       </div>
     </div>
@@ -30,6 +30,9 @@
         <label>This device</label>
         <input id="deviceName" type="text" />
         <p class="meta" id="deviceMeta"></p>
+        <p class="hint" id="firewallHint">
+          Allow private network / local network for ClipShare (UDP 41234). Port is shown above.
+        </p>
         <label class="row">
           <input id="syncEnabled" type="checkbox" checked />
           Sync clipboard
@@ -63,17 +66,36 @@
         <button id="btnCancelPair" class="ghost hidden" type="button">Cancel pairing</button>
 
         <ul id="peers" class="peer-list" aria-live="polite"></ul>
-
-        <details class="manual">
-          <summary>Manual host:port (fallback)</summary>
-          <div class="row">
-            <input id="manualHost" type="text" placeholder="192.168.1.20" />
-            <input id="manualPort" type="text" placeholder="port" style="max-width: 90px" />
-            <button id="btnManual" type="button">Add</button>
-          </div>
-          <p class="hint">Other device shows its port under “This device”.</p>
-        </details>
       </section>
+
+      <section class="card" id="manualPairCard">
+        <h2>Enter pairing code</h2>
+        <p class="hint">
+          On the other device tap <strong>Start pairing</strong>, then pick that device here and type the code.
+        </p>
+        <label for="manualPeer">Device</label>
+        <select id="manualPeer"></select>
+        <label for="manualCode">6-digit code</label>
+        <div class="row">
+          <input id="manualCode" type="text" inputmode="numeric" maxlength="6" placeholder="482913" />
+          <button id="btnManualPair" type="button">Pair</button>
+        </div>
+        <p id="manualPairError" class="error hidden" role="alert"></p>
+
+        <h2 class="subhead">Add by host:port</h2>
+        <p class="hint">If discovery is blocked by a firewall, add the other device manually (port is under This device).</p>
+        <div class="row">
+          <input id="manualHost" type="text" placeholder="192.168.1.20" />
+          <input id="manualPort" type="text" placeholder="port" style="max-width: 90px" />
+          <button id="btnManual" type="button">Add</button>
+        </div>
+      </section>
+
+      <footer class="powered">
+        <span>Powered by</span>
+        <img src="asolutionsz-logo.jpg" alt="AsolutionsZ" width="28" height="28" />
+        <strong>AsolutionsZ</strong>
+      </footer>
     </div>
 
     <dialog id="pairDialog">

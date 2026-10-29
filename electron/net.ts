@@ -23,15 +23,43 @@ import {
 
 const DISCOVERY_PORT = 41234;
 const BROADCAST = "255.255.255.255";
+/** Drop peers with no hello for this long (quit / left Wi‑Fi). */
+const PEER_STALE_MS = 12_000;
 
 function localIpv4s(): string[] {
   const out: string[] = [];
   for (const list of Object.values(networkInterfaces())) {
     for (const n of list ?? []) {
-      if (n.family === "IPv4" && !n.internal) out.push(n.address);
+      if ((n.family === "IPv4" || (n.family as unknown) === 4) && !n.internal) {
+        out.push(n.address);
+      }
     }
   }
   return out;
+}
+
+function ipv4Broadcast(address: string, netmask: string): string | null {
+  const a = address.split(".").map((x) => Number(x));
+  const m = netmask.split(".").map((x) => Number(x));
+  if (a.length !== 4 || m.length !== 4 || a.some((n) => Number.isNaN(n)) || m.some((n) => Number.isNaN(n))) {
+    return null;
+  }
+  return a.map((octet, i) => (octet | (~m[i] & 255)) & 255).join(".");
+}
+
+/** Global + per-NIC directed broadcasts (helps installed apps on multi-homed PCs). */
+function discoveryBroadcastTargets(): string[] {
+  const targets = new Set<string>([BROADCAST]);
+  for (const list of Object.values(networkInterfaces())) {
+    for (const n of list ?? []) {
+      if ((n.family !== "IPv4" && (n.family as unknown) !== 4) || n.internal) continue;
+      if (n.netmask) {
+        const b = ipv4Broadcast(n.address, n.netmask);
+        if (b) targets.add(b);
+      }
+    }
+  }
+  return [...targets];
 }
 
 function parseLine(raw: string): WireMessage | null {
@@ -66,6 +94,7 @@ export class ClipMeshNetwork {
   private udp: DgramSocket | null = null;
   private tcp: NetServer | null = null;
   private helloTimer: ReturnType<typeof setInterval> | null = null;
+  private pruneTimer: ReturnType<typeof setInterval> | null = null;
   private onClip: ClipHandler;
   private onChange: () => void;
 
@@ -122,12 +151,14 @@ export class ClipMeshNetwork {
   async start(): Promise<void> {
     await this.startTcp();
     this.startUdp();
-    this.helloTimer = setInterval(() => this.broadcastHello(), 3000);
+    this.helloTimer = setInterval(() => this.broadcastHello(), 2000);
+    this.pruneTimer = setInterval(() => this.pruneStalePeers(), 2000);
     this.broadcastHello();
   }
 
   stop(): void {
     if (this.helloTimer) clearInterval(this.helloTimer);
+    if (this.pruneTimer) clearInterval(this.pruneTimer);
     this.udp?.close();
     this.tcp?.close();
     for (const s of this.sockets.values()) s.destroy();
@@ -234,6 +265,9 @@ export class ClipMeshNetwork {
 
   private startUdp(): void {
     this.udp = createSocket({ type: "udp4", reuseAddr: true });
+    this.udp.on("error", () => {
+      /* bind/send errors should not crash the tray app */
+    });
     this.udp.on("message", (msg, rinfo) => {
       const m = parseLine(msg.toString("utf8"));
       if (!m || m.type !== "hello") return;
@@ -250,12 +284,13 @@ export class ClipMeshNetwork {
         kind: normalizeDeviceKind(m.kind),
       });
     });
-    this.udp.bind(DISCOVERY_PORT, () => {
+    this.udp.bind(DISCOVERY_PORT, "0.0.0.0", () => {
       try {
         this.udp!.setBroadcast(true);
       } catch {
         /* ignore */
       }
+      this.broadcastHello();
     });
   }
 
@@ -268,7 +303,35 @@ export class ClipMeshNetwork {
       port: this.listenPort,
       kind: this.deviceKind,
     } satisfies WireMessage);
-    this.udp.send(payload, DISCOVERY_PORT, BROADCAST);
+    for (const host of discoveryBroadcastTargets()) {
+      try {
+        this.udp.send(payload, DISCOVERY_PORT, host);
+      } catch {
+        /* ignore per-target failures */
+      }
+    }
+  }
+
+  /** Remove devices that stopped advertising (app quit / left network). Keep session keys. */
+  private pruneStalePeers(): void {
+    const now = Date.now();
+    let changed = false;
+    for (const [id, peer] of this.peers) {
+      // Manual entries stay while connected; otherwise same stale window
+      if (id.startsWith("manual:") && this.sockets.has(id)) {
+        peer.lastSeen = now;
+        continue;
+      }
+      if (now - peer.lastSeen <= PEER_STALE_MS) continue;
+      this.peers.delete(id);
+      const sock = this.sockets.get(id);
+      if (sock) {
+        sock.destroy();
+        this.sockets.delete(id);
+      }
+      changed = true;
+    }
+    if (changed) this.onChange();
   }
 
   private upsertPeer(peer: PeerInfo): void {

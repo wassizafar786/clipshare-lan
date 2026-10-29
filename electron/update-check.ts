@@ -2,6 +2,7 @@ export interface UpdateInfo {
   currentVersion: string;
   latestVersion: string | null;
   updateAvailable: boolean;
+  /** Prefer direct installer asset; fall back to release page. */
   releaseUrl: string | null;
   checkedAt: number | null;
 }
@@ -45,8 +46,40 @@ async function fetchJson(url: string): Promise<unknown | null> {
   }
 }
 
+type GhAsset = { name?: string; browser_download_url?: string };
+
+function pickPlatformAsset(assets: GhAsset[] | undefined): string | null {
+  if (!Array.isArray(assets) || !assets.length) return null;
+  const names = assets
+    .filter((a) => a.name && a.browser_download_url)
+    .map((a) => ({ name: a.name!.toLowerCase(), url: a.browser_download_url! }));
+
+  if (process.platform === "win32") {
+    const exe = names.find((a) => a.name.endsWith(".exe") && a.name.includes("win"));
+    if (exe) return exe.url;
+    const anyExe = names.find((a) => a.name.endsWith(".exe"));
+    return anyExe?.url ?? null;
+  }
+  if (process.platform === "darwin") {
+    const arch = process.arch === "arm64" ? "arm64" : "x64";
+    const dmgArch = names.find(
+      (a) => a.name.endsWith(".dmg") && a.name.includes("mac") && a.name.includes(arch),
+    );
+    if (dmgArch) return dmgArch.url;
+    const dmg = names.find((a) => a.name.endsWith(".dmg"));
+    if (dmg) return dmg.url;
+    const zipArch = names.find(
+      (a) => a.name.endsWith(".zip") && a.name.includes("mac") && a.name.includes(arch),
+    );
+    if (zipArch) return zipArch.url;
+    const zip = names.find((a) => a.name.endsWith(".zip") && a.name.includes("mac"));
+    return zip?.url ?? null;
+  }
+  return null;
+}
+
 /**
- * Check GitHub latest release; if none, fall back to latest semver tag.
+ * Check GitHub latest release; prefer platform installer download URL.
  * Failures return updateAvailable: false (silent).
  */
 export async function checkForUpdate(currentVersion: string): Promise<UpdateInfo> {
@@ -61,14 +94,18 @@ export async function checkForUpdate(currentVersion: string): Promise<UpdateInfo
 
   const release = (await fetchJson(
     `https://api.github.com/repos/${repo}/releases/latest`,
-  )) as { tag_name?: string; html_url?: string } | null;
+  )) as {
+    tag_name?: string;
+    html_url?: string;
+    assets?: GhAsset[];
+  } | null;
 
   let latest: string | null = null;
   let url: string | null = base.releaseUrl;
 
   if (release?.tag_name) {
     latest = normalizeTag(release.tag_name);
-    url = release.html_url || url;
+    url = pickPlatformAsset(release.assets) || release.html_url || url;
   } else {
     const tags = (await fetchJson(
       `https://api.github.com/repos/${repo}/tags?per_page=20`,

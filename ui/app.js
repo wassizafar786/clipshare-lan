@@ -89,13 +89,37 @@ function placeBlips(peers) {
   });
 }
 
+function fillManualPeerSelect(peers) {
+  const sel = $("manualPeer");
+  const prev = sel.value;
+  sel.innerHTML = "";
+  const unpaired = peers.filter((p) => !p.paired);
+  if (!unpaired.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = peers.length ? "All nearby devices are already paired" : "Waiting for devices on Wi‑Fi…";
+    sel.appendChild(opt);
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  for (const peer of unpaired) {
+    const opt = document.createElement("option");
+    opt.value = peer.id;
+    opt.textContent = `${peer.name} (${kindLabel(peer)}) · ${peer.host}`;
+    sel.appendChild(opt);
+  }
+  if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+}
+
 function renderPeerList(peers) {
   const list = $("peers");
   list.innerHTML = "";
+  fillManualPeerSelect(peers);
   if (!peers.length) {
     const empty = document.createElement("li");
     empty.innerHTML =
-      "<span class='hint'>No peers yet — open ClipShare on another device on this Wi‑Fi.</span>";
+      "<span class='hint'>No peers yet — open ClipShare on the other PC/Mac on the same Wi‑Fi, and allow local network / private network firewall access.</span>";
     list.appendChild(empty);
     return;
   }
@@ -241,6 +265,31 @@ $("btnManual").onclick = async () => {
   }
   await window.clipshare.addManualPeer(host, port);
   render(await window.clipshare.getState());
+};
+
+$("btnManualPair").onclick = async () => {
+  const peerId = $("manualPeer").value;
+  const code = $("manualCode").value.trim();
+  const err = $("manualPairError");
+  err.classList.add("hidden");
+  if (!peerId) {
+    err.textContent = "Wait until the other device appears, or add it by host:port first.";
+    err.classList.remove("hidden");
+    return;
+  }
+  if (code.length < 4) {
+    err.textContent = "Enter the 6-digit code from the other device.";
+    err.classList.remove("hidden");
+    return;
+  }
+  try {
+    await window.clipshare.pairWith(peerId, code);
+    $("manualCode").value = "";
+    render(await window.clipshare.getState());
+  } catch (e) {
+    err.textContent = String(e?.message || e);
+    err.classList.remove("hidden");
+  }
 };
 
 $("pairCancel").onclick = () => {

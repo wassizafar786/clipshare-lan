@@ -29,7 +29,11 @@ Run the same app on a Mac and a Windows PC on the same Wi‑Fi:
 2. On device B: tap A on the radar → **Enter code**
 3. Copy text on one → paste on the other
 
-Allow **local network / private network** firewall access when prompted. Allow **notifications** for ClipShare / Electron so unpair and network-change alerts can appear.
+Allow **local network / private network** firewall access when prompted (Windows Defender / macOS Local Network). Discovery uses **UDP port 41234**; the app also shows its TCP listen port under **This device**. If peers never appear, use **Enter pairing code** / **Add by host:port** in the UI.
+
+Allow **notifications** for ClipShare so unpair and network-change alerts can appear.
+
+Footer branding: **Powered by AsolutionsZ**.
 
 ## Build & release (Mac + Windows)
 
@@ -55,7 +59,7 @@ Publish so clients can see the update bar:
 3. `git push origin main --tags`
 4. Create a [GitHub Release](https://github.com/wassizafar786/clipshare-lan/releases) for that tag and upload files from `release/`
 
-The app checks `releases/latest` on launch (and every 6 hours). Override repo with `CLIPSHARE_UPDATE_REPO=owner/name`. Unsigned builds may trigger SmartScreen / Gatekeeper warnings.
+The app checks `releases/latest` on launch (and every 6 hours) and the **Download update** bar opens the platform installer (`.exe` / `.dmg`) when present. Override repo with `CLIPSHARE_UPDATE_REPO=owner/name`. Unsigned builds may trigger SmartScreen / Gatekeeper warnings.
 
 If Windows packaging fails extracting `winCodeSign` (symlink privilege errors), enable Windows **Developer Mode**, or keep `signAndEditExecutable: false` in `package.json` (already set for unsigned local builds).
 

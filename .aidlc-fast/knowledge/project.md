@@ -9,11 +9,15 @@
 
 ## UI
 
+- Manual pairing UI must stay above-the-fold (device select + code + host:port), not only collapsed details. (learned 2026-10-29) <!-- cid:261029-we-got-some-issues-1-aft:f9e693ae6a019eed -->
+
 - Pair dialog Cancel must be type=button (or formnovalidate) — required inputs fire validation on submit Cancel. (learned 2026-10-28) <!-- cid:261028-fix-ship-feedback-show-d:d0681d2225119861 -->
 
 - Radar UI: advertise device kind on discovery hello (pc/mac/linux/mobile); show type labels on blips and list, not dots only. (learned 2026-10-28) <!-- cid:261028-fix-ship-feedback-show-d:eced7df5fb30d77b -->
 
 ## Desktop
+
+- LAN discovery: broadcast hello to 255.255.255.255 and each NIC directed broadcast; prune peers with no hello ~12s so quit devices disappear. (learned 2026-10-29) <!-- cid:261029-we-got-some-issues-1-aft:53a1a9bb3736df57 -->
 
 - App updates: package.json version is source of truth; check GitHub releases/latest and show dismissible update bar (openExternal) — no silent install in v1. (learned 2026-10-28) <!-- cid:261028-we-need-to-build-the-fea:b640483cf72f22c5 -->
 
