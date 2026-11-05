@@ -32,3 +32,9 @@
 - Windows electron-builder: set win.signAndEditExecutable=false for unsigned local builds to avoid winCodeSign symlink privilege failures. (learned 2026-10-28) <!-- cid:261028-we-need-to-build-the-fea:3072dc8419f76d2e -->
 
 - Windows tray icons need opaque PNGs; empty/transparent NativeImage is invisible in the notification area. (learned 2026-10-28) <!-- cid:261028-fix-ship-feedback-show-d:30bc6c471f6fdcc7 -->
+
+- Mac auto-update reads `latest-mac.yml` plus the zip from the GitHub release. A Windows-only release 404s that file. electron-updater's "check your token" line is its generic text for a 404. (learned 2026-11-05) <!-- cid:261105-latest-mac-yml-release:a1c0e4f7b2 -->
+
+- Mac→Windows pairing: macOS often blocks this Electron app from opening an outbound LAN connection (`EHOSTUNREACH`) even when the Windows port is open and Windows can connect to the Mac. Broadcast `please-dial` and finish pairing on the inbound socket. Both computers must be running that build. Mac Info.plist needs `NSLocalNetworkUsageDescription`. (learned 2026-11-05) <!-- cid:261105-mac-to-windows-dialback:b7e2d91c04 -->
+
+- App icon is `build/icon.png` (1024) and `assets/icon.png` for the running window and Dock. Without it, electron-builder uses the default Electron icon, which looks like the React atom. (learned 2026-11-05) <!-- cid:261105-app-icon-not-electron:c4a8f03e11 -->

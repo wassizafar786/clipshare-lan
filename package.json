@@ -44,6 +44,7 @@
     "directories": {
       "output": "release"
     },
+    "icon": "build/icon.png",
     "files": [
       "dist/**/*",
       "package.json"

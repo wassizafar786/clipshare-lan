@@ -176,7 +176,21 @@ function maybeNotifyPeer(peer: PeerInfo): void {
   }
 }
 
+function appIcon(): Electron.NativeImage {
+  return nativeImage.createFromPath(join(__dirname, "assets", "icon.png"));
+}
+
+function showMainWindow(): void {
+  if (process.platform === "darwin") {
+    const icon = appIcon();
+    if (!icon.isEmpty()) app.dock?.setIcon(icon);
+  }
+  win?.show();
+  win?.focus();
+}
+
 function createWindow(): void {
+  const icon = appIcon();
   win = new BrowserWindow({
     width: 420,
     height: 720,
@@ -186,6 +200,7 @@ function createWindow(): void {
     resizable: true,
     autoHideMenuBar: true,
     title: "ClipShare LAN",
+    icon: icon.isEmpty() ? undefined : icon,
     webPreferences: {
       preload: join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -231,15 +246,14 @@ function buildTray(): void {
     {
       label: "Open ClipShare",
       click: () => {
-        win?.show();
-        win?.focus();
+        showMainWindow();
       },
     },
     {
       label: "Start pairing",
       click: () => {
         net?.beginPairing();
-        win?.show();
+        showMainWindow();
       },
     },
     { type: "separator" },
@@ -255,8 +269,7 @@ function buildTray(): void {
   tray.on("click", () => {
     // Windows: left-click opens UI
     if (process.platform === "win32") {
-      win?.show();
-      win?.focus();
+      showMainWindow();
     }
   });
   // macOS: prefer menu-bar status item behavior (tray near clock area via system tray)
@@ -373,7 +386,9 @@ function wireIpc(): void {
 }
 
 app.whenReady().then(async () => {
+  const icon = appIcon();
   if (process.platform === "darwin") {
+    if (!icon.isEmpty()) app.dock?.setIcon(icon);
     app.dock?.hide();
   }
   nativeTheme.themeSource = "system";
