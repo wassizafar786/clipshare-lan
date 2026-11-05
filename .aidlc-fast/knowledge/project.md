@@ -38,3 +38,5 @@
 - Mac→Windows pairing: macOS often blocks this Electron app from opening an outbound LAN connection (`EHOSTUNREACH`) even when the Windows port is open and Windows can connect to the Mac. Broadcast `please-dial` and finish pairing on the inbound socket. Both computers must be running that build. Mac Info.plist needs `NSLocalNetworkUsageDescription`. (learned 2026-11-05) <!-- cid:261105-mac-to-windows-dialback:b7e2d91c04 -->
 
 - App icon is `build/icon.png` (1024) and `assets/icon.png` for the running window and Dock. Without it, electron-builder uses the default Electron icon, which looks like the React atom. (learned 2026-11-05) <!-- cid:261105-app-icon-not-electron:c4a8f03e11 -->
+
+- A paired peer is online when its TCP socket is writable, even if UDP hellos pause. Inbound clips must claim that socket; do not replace the discovery listen port with the TCP remote port, or Mac→Windows sends miss the real listener and the UI stays "paired · offline". (learned 2026-11-05) <!-- cid:261105-paired-offline-but-receives:d8b1a44e02 -->

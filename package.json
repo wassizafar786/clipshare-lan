@@ -1,6 +1,6 @@
 {
   "name": "clipshare-lan",
-  "version": "0.4.0",
+  "version": "0.4.2",
   "description": "Share clipboard and files across Mac and Windows on the same Wi‑Fi with pairing codes",
   "main": "dist/main.js",
   "private": true,

@@ -677,10 +677,16 @@ export class ClipMeshNetwork {
       const hasSession = this.sessionKeys.has(id) || peer.paired;
       if (hasSession) {
         const sock = this.sockets.get(id);
-        if (sock) {
-          sock.destroy();
-          this.sockets.delete(id);
+        const live = Boolean(sock && !sock.destroyed && sock.writable);
+        if (live) {
+          peer.lastSeen = now;
+          if (!peer.connected) {
+            peer.connected = true;
+            changed = true;
+          }
+          continue;
         }
+        if (sock) this.sockets.delete(id);
         if (peer.connected) {
           peer.connected = false;
           peer.paired = true;
@@ -736,6 +742,9 @@ export class ClipMeshNetwork {
     let buf = "";
     let peerId = knownId ?? "";
     socket.setEncoding("utf8");
+    socket.on("error", () => {
+      /* replaced or closed sockets must not crash the process */
+    });
     socket.on("data", (chunk) => {
       buf += chunk;
       let idx: number;
@@ -905,12 +914,46 @@ export class ClipMeshNetwork {
     socket.write(JSON.stringify(msg) + "\n");
   }
 
+  /**
+   * Windows often opens the TCP connection. Traffic arrives on that socket even
+   * when this Mac never stored it, so the peer looked offline and Mac→Windows
+   * sends had nowhere to go. Claim the live socket and keep the discovery port.
+   */
+  private adoptSocket(peerId: string, socket: NetSocket): void {
+    if (!peerId) return;
+    const current = this.sockets.get(peerId);
+    if (current === socket) {
+      const same = this.peers.get(peerId);
+      if (same && !same.connected) {
+        same.connected = true;
+        same.lastSeen = Date.now();
+        this.peers.set(peerId, same);
+        this.onChange();
+      }
+      return;
+    }
+    this.sockets.set(peerId, socket);
+    if (current && !current.destroyed) current.destroy();
+    const host = socket.remoteAddress?.replace(/^::ffff:/, "");
+    const peer = this.peers.get(peerId);
+    if (peer) {
+      peer.connected = true;
+      peer.lastSeen = Date.now();
+      if (host) peer.host = host;
+      this.peers.set(peerId, peer);
+    }
+    this.onChange();
+    this.notifySocket(peerId);
+  }
+
   private async handleMessage(
     msg: WireMessage,
     socket: NetSocket,
     peerId: string,
   ): Promise<void> {
     if (msg.type === "hello" || msg.type === "please-dial") return;
+    const fromId = "id" in msg && msg.id ? msg.id : peerId;
+    if (fromId) this.adoptSocket(fromId, socket);
 
     if (msg.type === "dial-hello") {
       this.sockets.set(msg.id, socket);
@@ -952,15 +995,16 @@ export class ClipMeshNetwork {
       const key = deriveKeyFromPairingCode(msg.code, salt);
       this.sessionKeys.set(msg.id, key);
       this.sockets.set(msg.id, socket);
+      const known = this.peers.get(msg.id);
       this.upsertPeer({
         id: msg.id,
         name: msg.name,
-        host: socket.remoteAddress?.replace("::ffff:", "") ?? "unknown",
-        port: socket.remotePort ?? 0,
+        host: socket.remoteAddress?.replace("::ffff:", "") ?? known?.host ?? "unknown",
+        port: known?.port || 0,
         lastSeen: Date.now(),
         paired: true,
         connected: true,
-        kind: this.peers.get(msg.id)?.kind ?? "unknown",
+        kind: known?.kind ?? "unknown",
       });
       this.send(msg.id, { type: "pair-ok", id: this.deviceId, name: this.deviceName });
       this.cancelPairing();
