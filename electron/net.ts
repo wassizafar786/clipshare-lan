@@ -46,7 +46,8 @@ const RECONNECT_COOLDOWN_MS = 3_000;
  * incomplete (Windows radio asleep / just appeared). A later attempt succeeds.
  */
 const CONNECT_TIMEOUT_MS = 2_000;
-const CONNECT_RETRY_DELAYS_MS = [0, 400, 900, 1600, 2800, 4500];
+/** How long to wait for the other device to open the TCP connection. */
+const DIALBACK_WAIT_MS = 8_000;
 
 type IncomingFile = {
   peerId: string;
@@ -67,9 +68,17 @@ type PendingAck = {
   timer: ReturnType<typeof setTimeout>;
 };
 
+function ifaceMap(): ReturnType<typeof networkInterfaces> {
+  try {
+    return networkInterfaces();
+  } catch {
+    return {};
+  }
+}
+
 function localIpv4s(): string[] {
   const out: string[] = [];
-  for (const list of Object.values(networkInterfaces())) {
+  for (const list of Object.values(ifaceMap())) {
     for (const n of list ?? []) {
       if ((n.family === "IPv4" || (n.family as unknown) === 4) && !n.internal) {
         out.push(n.address);
@@ -91,7 +100,7 @@ function ipv4Broadcast(address: string, netmask: string): string | null {
 /** Global + per-NIC directed broadcasts (helps installed apps on multi-homed PCs). */
 function discoveryBroadcastTargets(): string[] {
   const targets = new Set<string>([BROADCAST]);
-  for (const list of Object.values(networkInterfaces())) {
+  for (const list of Object.values(ifaceMap())) {
     for (const n of list ?? []) {
       if ((n.family !== "IPv4" && (n.family as unknown) !== 4) || n.internal) continue;
       if (n.netmask) {
@@ -132,7 +141,7 @@ function connectFailureMessage(peer: PeerInfo, err: unknown): string {
   const code = (err as NodeJS.ErrnoException | undefined)?.code || "";
   const where = `${peer.name} (${peer.host}:${peer.port})`;
   if (code === "EHOSTUNREACH" || code === "EHOSTDOWN" || code === "ENETUNREACH" || code === "ENETDOWN") {
-    return `Can't reach ${where}. It is on the Wi-Fi list but not answering. Wake that PC, turn off any VPN, then try pairing again.`;
+    return `Can't reach ${where} from this Mac. Update ClipShare on that computer and try again. Until then, start pairing on this Mac and enter the code on the other computer.`;
   }
   if (
     code === "ECONNREFUSED" ||
@@ -184,6 +193,10 @@ export class ClipMeshNetwork {
   private helloTimer: ReturnType<typeof setInterval> | null = null;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectAttemptAt = new Map<string, number>();
+  /** Peer ids we are already opening a dial-back TCP connection to. */
+  private dialing = new Set<string>();
+  /** Resolves waiters when a socket for that peer is ready (outbound or dial-back). */
+  private socketWaiters = new Map<string, Array<() => void>>();
   private onClip: ClipHandler;
   private onFileReceived: FileReceivedHandler;
   private onChange: () => void;
@@ -292,14 +305,19 @@ export class ClipMeshNetwork {
     const salt = randomBytes(16);
     const key = deriveKeyFromPairingCode(code, salt);
     this.sessionKeys.set(peerId, key);
-    await this.ensureConnected(peer);
-    this.send(peerId, {
-      type: "pair-confirm",
-      id: this.deviceId,
-      name: this.deviceName,
-      code,
-      saltB64: salt.toString("base64"),
-    });
+    try {
+      await this.ensureConnected(peer);
+      this.send(peerId, {
+        type: "pair-confirm",
+        id: this.deviceId,
+        name: this.deviceName,
+        code,
+        saltB64: salt.toString("base64"),
+      });
+    } catch (err) {
+      this.sessionKeys.delete(peerId);
+      throw err;
+    }
   }
 
   async broadcastClipboard(text: string): Promise<void> {
@@ -531,7 +549,12 @@ export class ClipMeshNetwork {
     });
     this.udp.on("message", (msg, rinfo) => {
       const m = parseLine(msg.toString("utf8"));
-      if (!m || m.type !== "hello") return;
+      if (!m) return;
+      if (m.type === "please-dial") {
+        this.handlePleaseDial(m, rinfo.address);
+        return;
+      }
+      if (m.type !== "hello") return;
       if (m.id === this.deviceId) return;
       if (localIpv4s().includes(rinfo.address) && m.port === this.listenPort) return;
       this.upsertPeer({
@@ -578,14 +601,62 @@ export class ClipMeshNetwork {
     }
   }
 
-  /** Unicast hello so a sleeping Wi-Fi peer answers ARP before we open TCP. */
-  private nudgePeer(host: string): void {
+  /** Ask the peer to open TCP to us. Broadcast still arrives when unicast to them does not. */
+  private requestDialback(peer: PeerInfo): void {
     if (!this.udp || !this.listenPort) return;
-    try {
-      this.udp.send(this.helloPayload(), DISCOVERY_PORT, host);
-    } catch {
-      /* ignore */
+    const payload = JSON.stringify({
+      type: "please-dial",
+      id: this.deviceId,
+      name: this.deviceName,
+      port: this.listenPort,
+      to: peer.id,
+    } satisfies WireMessage);
+    for (const host of discoveryBroadcastTargets()) {
+      try {
+        this.udp.send(payload, DISCOVERY_PORT, host);
+      } catch {
+        /* ignore per-target failures */
+      }
     }
+  }
+
+  private handlePleaseDial(
+    m: Extract<WireMessage, { type: "please-dial" }>,
+    fromHost: string,
+  ): void {
+    if (m.to !== this.deviceId || m.id === this.deviceId) return;
+    if (!m.port || m.port < 1 || m.port > 65535) return;
+    if (localIpv4s().includes(fromHost) && m.port === this.listenPort) return;
+    // Only dial while we are showing a code, or back to a device we already paired.
+    if (!this.pairingActive && !this.sessionKeys.has(m.id)) return;
+    if (this.sockets.has(m.id) || this.dialing.has(m.id)) return;
+    this.dialing.add(m.id);
+    const prev = this.peers.get(m.id);
+    this.upsertPeer({
+      id: m.id,
+      name: m.name || prev?.name || "device",
+      host: fromHost,
+      port: m.port,
+      lastSeen: Date.now(),
+      paired: Boolean(prev?.paired) || this.sessionKeys.has(m.id),
+      connected: false,
+      kind: prev?.kind && prev.kind !== "unknown" ? prev.kind : "unknown",
+    });
+    const peer = this.peers.get(m.id);
+    if (!peer) {
+      this.dialing.delete(m.id);
+      return;
+    }
+    void this.ensureConnected(peer, { allowDialback: false })
+      .then(() => {
+        this.send(m.id, { type: "dial-hello", id: this.deviceId, name: this.deviceName });
+      })
+      .catch(() => {
+        /* the other side will ask again */
+      })
+      .finally(() => {
+        this.dialing.delete(m.id);
+      });
   }
 
   /**
@@ -678,7 +749,7 @@ export class ClipMeshNetwork {
       }
     });
     socket.on("close", () => {
-      if (peerId) {
+      if (peerId && this.sockets.get(peerId) === socket) {
         this.sockets.delete(peerId);
         const p = this.peers.get(peerId);
         if (p) {
@@ -706,7 +777,7 @@ export class ClipMeshNetwork {
         reject(err);
       };
       const timer = setTimeout(() => fail(new Error("connect timeout")), CONNECT_TIMEOUT_MS);
-      socket.once("error", (err) => fail(err));
+      socket.on("error", (err) => fail(err));
       socket.connect(peer.port, peer.host, () => {
         if (settled) {
           socket.destroy();
@@ -714,34 +785,118 @@ export class ClipMeshNetwork {
         }
         settled = true;
         clearTimeout(timer);
+        if (this.sockets.has(peer.id)) {
+          socket.destroy();
+          resolve();
+          return;
+        }
         this.sockets.set(peer.id, socket);
         this.attachSocket(socket, peer.id);
         peer.connected = true;
         this.peers.set(peer.id, peer);
         this.onChange();
+        this.notifySocket(peer.id);
         resolve();
       });
     });
   }
 
-  private async ensureConnected(peer: PeerInfo): Promise<void> {
-    if (this.sockets.has(peer.id)) return;
+  private notifySocket(peerId: string): void {
+    const waiters = this.socketWaiters.get(peerId);
+    if (!waiters) return;
+    this.socketWaiters.delete(peerId);
+    for (const fn of waiters) fn();
+  }
+
+  private waitForPeerSocket(peerId: string, timeoutMs: number): Promise<void> {
+    if (this.sockets.has(peerId)) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const onSocket = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        const list = this.socketWaiters.get(peerId) ?? [];
+        this.socketWaiters.set(
+          peerId,
+          list.filter((fn) => fn !== onSocket),
+        );
+        reject(new Error("dialback timeout"));
+      }, timeoutMs);
+      const list = this.socketWaiters.get(peerId) ?? [];
+      list.push(onSocket);
+      this.socketWaiters.set(peerId, list);
+      if (this.sockets.has(peerId)) onSocket();
+    });
+  }
+
+  private async connectWithRetries(
+    peer: PeerInfo,
+    budgetMs: number,
+    onErr: (err: unknown) => void,
+  ): Promise<void> {
+    const started = Date.now();
     let lastErr: unknown = new Error("connect timeout");
-    for (let i = 0; i < CONNECT_RETRY_DELAYS_MS.length; i++) {
+    while (Date.now() - started < budgetMs) {
       if (this.sockets.has(peer.id)) return;
-      const delay = CONNECT_RETRY_DELAYS_MS[i] ?? 0;
-      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
-      if (this.sockets.has(peer.id)) return;
-      this.nudgePeer(peer.host);
       try {
         await this.connectOnce(peer);
         return;
       } catch (err) {
         lastErr = err;
+        onErr(err);
         if (!isTransientConnectError(err)) break;
       }
+      if (this.sockets.has(peer.id)) return;
+      await new Promise((r) => setTimeout(r, 250));
     }
-    throw new Error(connectFailureMessage(peer, lastErr));
+    throw lastErr instanceof Error ? lastErr : new Error("connect timeout");
+  }
+
+  /**
+   * Open a TCP session. This Mac often cannot dial Windows (outbound LAN is
+   * blocked), while Windows can dial the Mac. Ask them to connect back and
+   * use whichever socket comes up first.
+   */
+  private async ensureConnected(
+    peer: PeerInfo,
+    opts?: { allowDialback?: boolean },
+  ): Promise<void> {
+    if (this.sockets.has(peer.id)) return;
+    const allowDialback = opts?.allowDialback !== false;
+    let lastErr: unknown = new Error("connect timeout");
+    let pulse: ReturnType<typeof setInterval> | null = null;
+    const outbound = this.connectWithRetries(peer, allowDialback ? DIALBACK_WAIT_MS : CONNECT_TIMEOUT_MS, (err) => {
+      lastErr = err;
+    });
+    const inbound = allowDialback
+      ? this.waitForPeerSocket(peer.id, DIALBACK_WAIT_MS)
+      : null;
+    if (allowDialback) {
+      this.requestDialback(peer);
+      pulse = setInterval(() => {
+        if (!this.sockets.has(peer.id)) this.requestDialback(peer);
+      }, 500);
+    }
+    try {
+      if (inbound) {
+        const outboundResult = outbound.then(() => "out" as const).catch(() => "out-failed" as const);
+        const inboundResult = inbound.then(() => "in" as const).catch(() => "in-failed" as const);
+        const winner = await Promise.race([outboundResult, inboundResult]);
+        if (!this.sockets.has(peer.id)) {
+          await (winner === "out-failed" ? inboundResult : outboundResult);
+        }
+      } else {
+        await outbound;
+      }
+    } catch (err) {
+      lastErr = err;
+    } finally {
+      if (pulse) clearInterval(pulse);
+    }
+    if (!this.sockets.has(peer.id)) {
+      throw new Error(connectFailureMessage(peer, lastErr));
+    }
   }
 
   private send(peerId: string, msg: WireMessage): void {
@@ -755,7 +910,21 @@ export class ClipMeshNetwork {
     socket: NetSocket,
     peerId: string,
   ): Promise<void> {
-    if (msg.type === "hello") return;
+    if (msg.type === "hello" || msg.type === "please-dial") return;
+
+    if (msg.type === "dial-hello") {
+      this.sockets.set(msg.id, socket);
+      const p = this.peers.get(msg.id);
+      if (p) {
+        p.connected = true;
+        const host = socket.remoteAddress?.replace("::ffff:", "");
+        if (host) p.host = host;
+        this.peers.set(msg.id, p);
+      }
+      this.onChange();
+      this.notifySocket(msg.id);
+      return;
+    }
 
     if (msg.type === "pair-confirm") {
       if (!this.pairingActive || !this.pairingCode || !this.pairingSalt) {

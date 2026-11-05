@@ -9,7 +9,7 @@
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node scripts/smoke-protocol.mjs && node scripts/smoke-semver.mjs && node scripts/smoke-history.mjs && node scripts/smoke-connect.mjs",
+    "test": "node scripts/smoke-protocol.mjs && node scripts/smoke-semver.mjs && node scripts/smoke-history.mjs && node scripts/smoke-connect.mjs && node scripts/smoke-dialback.mjs",
     "lint": "echo lint-ok",
     "dist": "npm run build && electron-builder --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
@@ -62,7 +62,10 @@
         "zip"
       ],
       "category": "public.app-category.utilities",
-      "artifactName": "ClipShare-LAN-${version}-mac-${arch}.${ext}"
+      "artifactName": "ClipShare-LAN-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "NSLocalNetworkUsageDescription": "ClipShare connects to other computers on your Wi-Fi to sync the clipboard and files."
+      }
     },
     "nsis": {
       "oneClick": false,

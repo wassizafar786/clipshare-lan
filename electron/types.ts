@@ -14,6 +14,8 @@ export interface PeerInfo {
 
 export type WireMessage =
   | { type: "hello"; id: string; name: string; port: number; kind?: DeviceKind }
+  | { type: "please-dial"; id: string; name: string; port: number; to: string }
+  | { type: "dial-hello"; id: string; name: string }
   | { type: "pair-offer"; id: string; name: string; codeHint: string }
   | {
       type: "pair-confirm";
