@@ -7,30 +7,34 @@ import {
   ipcMain,
   nativeTheme,
   shell,
+  dialog,
+  clipboard,
 } from "electron";
 import { hostname } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync, mkdirSync } from "node:fs";
 import { ClipMeshNetwork } from "./net";
+import { HistoryStore } from "./history-store";
 import { startClipboardWatch, writeClipboardText } from "./clipboard-watch";
 import { notifyOnce, notifyPeerEvent } from "./notify";
-import { checkForUpdate, type UpdateInfo } from "./update-check";
+import {
+  checkAutoUpdate,
+  downloadAutoUpdate,
+  getAutoUpdateState,
+  initAutoUpdate,
+  onAutoUpdateChange,
+  quitAndInstallUpdate,
+} from "./auto-update";
 import type { AppStateSnapshot, PeerInfo } from "./types";
 
 let tray: Tray | null = null;
 let win: BrowserWindow | null = null;
 let net: ClipMeshNetwork | null = null;
+let history: HistoryStore | null = null;
 let stopWatch: (() => void) | null = null;
 let netPollTimer: ReturnType<typeof setInterval> | null = null;
 let updatePollTimer: ReturnType<typeof setInterval> | null = null;
-let updateInfo: UpdateInfo = {
-  currentVersion: "0.0.0",
-  latestVersion: null,
-  updateAvailable: false,
-  releaseUrl: null,
-  checkedAt: null,
-};
 
 /** Last known peer link state for transition notifications. */
 const peerLink = new Map<string, { paired: boolean; connected: boolean; name: string }>();
@@ -66,19 +70,26 @@ function pushState(): void {
 }
 
 function enrichSnapshot(s: AppStateSnapshot): AppStateSnapshot {
+  const u = getAutoUpdateState();
   return {
     ...s,
-    appVersion: updateInfo.currentVersion || app.getVersion(),
-    updateAvailable: updateInfo.updateAvailable,
-    updateVersion: updateInfo.latestVersion,
-    updateUrl: updateInfo.releaseUrl,
+    appVersion: u.currentVersion || app.getVersion(),
+    updateAvailable: u.updateAvailable || u.status === "downloaded" || u.status === "available",
+    updateVersion: u.latestVersion,
+    updateUrl: u.updateUrl,
+    updateStatus: u.status,
+    updateProgress: u.progress,
+    updateError: u.error,
+    history: history?.list() ?? [],
   };
 }
 
+function receiveDir(): string {
+  return join(app.getPath("downloads"), "ClipShare");
+}
+
 async function refreshUpdateInfo(): Promise<void> {
-  const current = app.getVersion();
-  updateInfo = await checkForUpdate(current);
-  updateInfo.currentVersion = current;
+  await checkAutoUpdate();
   pushState();
 }
 
@@ -275,11 +286,89 @@ function wireIpc(): void {
   ipcMain.handle("peer:unpair", (_e, peerId: string) => net?.unpairPeer(peerId));
   ipcMain.handle("update:check", async () => {
     await refreshUpdateInfo();
-    return updateInfo;
+    return getAutoUpdateState();
+  });
+  ipcMain.handle("update:download", async () => {
+    await downloadAutoUpdate();
+    pushState();
+    return getAutoUpdateState();
+  });
+  ipcMain.handle("update:install", () => {
+    quitAndInstallUpdate();
   });
   ipcMain.handle("update:open", async () => {
-    const url = updateInfo.releaseUrl;
+    const url = getAutoUpdateState().updateUrl;
     if (url) await shell.openExternal(url);
+  });
+
+  ipcMain.handle("files:pick", async () => {
+    const opts: Electron.OpenDialogOptions = {
+      properties: ["openFile", "multiSelections"],
+      title: "Send with ClipShare",
+    };
+    const res = win
+      ? await dialog.showOpenDialog(win, opts)
+      : await dialog.showOpenDialog(opts);
+    if (res.canceled) return [] as string[];
+    return res.filePaths;
+  });
+
+  ipcMain.handle("files:send", async (_e, peerId: string, filePaths: string[]) => {
+    if (!net) throw new Error("Network not ready");
+    const results = [];
+    for (const filePath of filePaths) {
+      const st = statSync(filePath);
+      const progress = await net.sendFile(peerId, filePath, {
+        size: st.size,
+        fileName: basename(filePath),
+      });
+      const peer = net.snapshot().peers.find((p) => p.id === peerId);
+      history?.add({
+        kind: "file",
+        direction: "out",
+        peerId,
+        peerName: peer?.name || peerId.slice(0, 8),
+        fileName: basename(filePath),
+        filePath,
+        size: st.size,
+      });
+      results.push(progress);
+      pushState();
+    }
+    return results;
+  });
+
+  ipcMain.handle("history:list", () => history?.list() ?? []);
+  ipcMain.handle("history:delete", (_e, id: string) => {
+    const ok = history?.delete(id) ?? false;
+    pushState();
+    return ok;
+  });
+  ipcMain.handle("history:clear", () => {
+    history?.clear();
+    pushState();
+  });
+  ipcMain.handle("history:copy", (_e, id: string) => {
+    const entry = history?.get(id);
+    if (!entry?.text) return false;
+    clipboard.writeText(entry.text);
+    return true;
+  });
+  ipcMain.handle("history:open", async (_e, id: string) => {
+    const entry = history?.get(id);
+    if (!entry?.filePath) return false;
+    const err = await shell.openPath(entry.filePath);
+    return !err;
+  });
+  ipcMain.handle("history:show", (_e, id: string) => {
+    const entry = history?.get(id);
+    if (!entry?.filePath) return false;
+    shell.showItemInFolder(entry.filePath);
+    return true;
+  });
+  ipcMain.handle("history:openReceiveFolder", async () => {
+    mkdirSync(receiveDir(), { recursive: true });
+    await shell.openPath(receiveDir());
   });
 }
 
@@ -290,12 +379,42 @@ app.whenReady().then(async () => {
   nativeTheme.themeSource = "system";
 
   const device = loadOrCreateDevice();
+  history = new HistoryStore(join(app.getPath("userData"), "history.json"));
+  mkdirSync(receiveDir(), { recursive: true });
   net = new ClipMeshNetwork({
     deviceId: device.id,
     deviceName: device.name,
-    onClip: (text) => {
+    receiveDir: receiveDir(),
+    onClip: (text, fromPeer) => {
       writeClipboardText(text);
       net?.markLocalClipboard(text);
+      const peer = net?.snapshot().peers.find((p) => p.id === fromPeer);
+      history?.add({
+        kind: "text",
+        direction: "in",
+        peerId: fromPeer,
+        peerName: peer?.name || fromPeer.slice(0, 8),
+        text,
+      });
+      pushState();
+    },
+    onFileReceived: (info) => {
+      history?.add({
+        kind: "file",
+        direction: "in",
+        peerId: info.peerId,
+        peerName: info.peerName,
+        fileName: info.fileName,
+        filePath: info.filePath,
+        size: info.size,
+        mime: info.mime,
+      });
+      notifyOnce(
+        `file:${info.filePath}`,
+        "ClipShare · File received",
+        `${info.fileName} from ${info.peerName}`,
+      );
+      pushState();
     },
     onChange: () => pushState(),
   });
@@ -313,7 +432,8 @@ app.whenReady().then(async () => {
   }
   notifyReady = true;
 
-  updateInfo.currentVersion = app.getVersion();
+  initAutoUpdate();
+  onAutoUpdateChange(() => pushState());
 
   createWindow();
   buildTray();
@@ -332,7 +452,18 @@ app.whenReady().then(async () => {
 
   stopWatch = startClipboardWatch(
     (text) => {
-      void net?.broadcastClipboard(text);
+      void net?.broadcastClipboard(text).then(() => {
+        const peers = net?.snapshot().peers.filter((p) => p.paired) ?? [];
+        if (!peers.length) return;
+        history?.add({
+          kind: "text",
+          direction: "out",
+          peerId: peers.map((p) => p.id).join(","),
+          peerName: peers.map((p) => p.name).join(", "),
+          text,
+        });
+        pushState();
+      });
     },
     {
       shouldSkip: () => !net || net.isSuppressingEcho(),

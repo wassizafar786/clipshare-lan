@@ -17,10 +17,13 @@ window.clipshare = {
     listenPort: 5555,
     deviceKind: "pc",
     localAddresses: ["192.168.1.10"],
-    appVersion: "0.2.0",
+    appVersion: "0.4.0",
     updateAvailable: true,
-    updateVersion: "0.2.1",
-    updateUrl: "https://github.com/wassizafar786/clipshare-lan/releases/download/v0.2.1/ClipShare-LAN-0.2.1-win-x64.exe",
+    updateVersion: "0.4.1",
+    updateUrl: "https://github.com/wassizafar786/clipshare-lan/releases",
+    updateStatus: "available",
+    updateProgress: null,
+    updateError: null,
     pairingCode: null,
     pairingActive: false,
     peers: [
@@ -29,7 +32,14 @@ window.clipshare = {
       { id: "peer-3", name: "Pixel", host: "192.168.1.40", port: 5558, lastSeen: Date.now(), paired: false, connected: false, kind: "mobile" }
     ],
     lastClipPreview: null,
-    syncEnabled: true
+    syncEnabled: true,
+    transfers: [
+      { transferId: "t1", peerId: "peer-2", peerName: "Office PC", direction: "out", fileName: "shot.png", bytesDone: 512, bytesTotal: 1024, status: "active" }
+    ],
+    history: [
+      { id: "h1", kind: "text", direction: "out", peerId: "peer-2", peerName: "Office PC", createdAt: Date.now() - 60000, text: "hello history" },
+      { id: "h2", kind: "file", direction: "in", peerId: "peer-2", peerName: "Office PC", createdAt: Date.now() - 30000, fileName: "doc.pdf", filePath: "C:/tmp/doc.pdf", size: 2048 }
+    ]
   },
   getState() { return Promise.resolve(structuredClone(this._state)); },
   beginPairing() {
@@ -51,8 +61,26 @@ window.clipshare = {
     if (p) { p.paired = false; p.connected = false; }
     return Promise.resolve();
   },
-  checkUpdate() { return Promise.resolve({ updateAvailable: true }); },
+  checkUpdate() { return Promise.resolve({ updateAvailable: true, status: "available" }); },
+  downloadUpdate() {
+    this._state.updateStatus = "downloaded";
+    this._state.updateProgress = 100;
+    return Promise.resolve(this._state);
+  },
+  installUpdate() { window.__installUpdate = true; return Promise.resolve(); },
   openUpdate() { window.__openedUpdate = true; return Promise.resolve(); },
+  pickFiles() { return Promise.resolve([]); },
+  sendFiles() { return Promise.resolve([]); },
+  listHistory() { return Promise.resolve(this._state.history); },
+  deleteHistory(id) {
+    this._state.history = this._state.history.filter((e) => e.id !== id);
+    return Promise.resolve(true);
+  },
+  clearHistory() { this._state.history = []; return Promise.resolve(); },
+  copyHistory() { return Promise.resolve(true); },
+  openHistoryFile() { return Promise.resolve(true); },
+  showHistoryFile() { return Promise.resolve(true); },
+  openReceiveFolder() { return Promise.resolve(); },
   onState(cb) { this._cb = cb; return () => {}; }
 };
 `;

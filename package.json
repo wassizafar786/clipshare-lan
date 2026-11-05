@@ -1,7 +1,7 @@
 {
   "name": "clipshare-lan",
-  "version": "0.2.1",
-  "description": "Share clipboard across Mac and Windows on the same Wi‑Fi with pairing codes",
+  "version": "0.4.0",
+  "description": "Share clipboard and files across Mac and Windows on the same Wi‑Fi with pairing codes",
   "main": "dist/main.js",
   "private": true,
   "scripts": {
@@ -9,7 +9,7 @@
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node scripts/smoke-protocol.mjs && node scripts/smoke-semver.mjs",
+    "test": "node scripts/smoke-protocol.mjs && node scripts/smoke-semver.mjs && node scripts/smoke-history.mjs",
     "lint": "echo lint-ok",
     "dist": "npm run build && electron-builder --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
@@ -34,6 +34,7 @@
     "typescript": "^5.8.0"
   },
   "dependencies": {
+    "electron-updater": "^6.6.2",
     "uuid": "^11.1.0",
     "ws": "^8.18.1"
   },
@@ -50,8 +51,7 @@
     "extraResources": [],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ],
       "artifactName": "ClipShare-LAN-${version}-win-${arch}.${ext}",
       "signAndEditExecutable": false
@@ -68,6 +68,12 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     },
-    "publish": null
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "wassizafar786",
+        "repo": "clipshare-lan"
+      }
+    ]
   }
 }

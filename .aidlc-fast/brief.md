@@ -1,42 +1,50 @@
 # Brief
 
 ## Intent
-Fix paired-device reconnect after disconnect, and send one clear notification per real link event (paired / unpaired / offline / reconnected)—not repeated “unpaired” while both devices are still on the LAN.
+Restructure the ClipShare window into four tabs (Home · Share · History · Settings), add LAN file/image transfer to a selected paired peer with per-transfer progress (received files land in Downloads/ClipShare), and persist recent text + file transfers for History management (copy / open / delete / clear).
 
 ## Scope
-bugfix
+feature
 
 ## Acceptance criteria
-- [x] Temporary discovery gaps do **not** show as “unpaired”. Only explicit Unpair (or clearing the session) may say unpaired.
-- [x] When a paired peer’s hellos stop briefly: mark **offline** (keep pairing); when hellos/TCP return: auto-reconnect and notify **reconnected** once.
-- [x] When a paired peer is gone longer / app quit: notify **offline** (or left network) once—not “unpaired”—and keep session so they come back as paired without re-entering the code.
-- [x] Notifications are one-per-transition per peer: paired · unpaired · offline · reconnected (no spam stacks of unpaired).
-- [x] Both Mac and Windows on the same Wi‑Fi with an existing pairing stay shown as **paired** (or paired · offline), not “seen” / needing a new code, after a brief disconnect.
-- [x] Existing clipboard sync after reconnect works without re-pairing when session keys still exist.
+- [x] Window uses tabs **Home · Share · History · Settings**; no single long-scrolling “everything” page. Each tab fits typical tray-window height without requiring the whole app content to scroll as one page (tab content may scroll internally if needed).
+- [x] **Home**: radar pairing, peer list, manual pairing code + host:port add (existing pairing flows preserved).
+- [x] **Share**: pick a paired/online peer, send one or more files/images (file picker); show **per-transfer progress** (sent/received %); clear failure messaging.
+- [x] **Receive**: incoming files auto-save under the user’s Downloads/`ClipShare` folder (create folder if missing); notify when a file arrives.
+- [x] Transfers use the existing paired TCP session and stay encrypted with the session key (chunked protocol; not unbounded JSON-in-clipboard).
+- [x] Reasonable size guard (~100 MB per file).
+- [x] **History**: local JSON store of recent **text clips** and **file transfers**. Cap retention (200).
+- [x] History actions: **copy again** (text), **open file** / show in folder (files), **delete** one, **clear all**.
+- [x] **Settings**: device name, sync clipboard toggle, update check (moved off the old stacked page).
+- [x] Existing clipboard sync + pairing + auto-update behavior still works.
+- [x] Typecheck + smoke tests pass.
 
 ## Approach
-1. **Peer lifecycle:** For peers with a session key, do not delete on stale prune—keep them in the map as `paired: true, connected: false` and refresh when hello returns; only prune unpaired “seen” peers. Optionally lengthen stale window slightly.
-2. **Auto-reconnect:** On hello for a peer that has `sessionKeys`, call `ensureConnected` (debounced) so TCP/sync comes back without user action.
-3. **Notifications (`main.ts` / `notify.ts`):**
-   - Remove `gone:` → “Device unpaired” for prune/removal.
-   - Emit: first become paired → Paired; explicit unpair → Unpaired; connected→false while paired → Offline; connected false→true while paired → Reconnected.
-   - Global “one at a time” or per-peer last-event so overlapping titles don’t pile up; keep debounce.
-4. **UI:** Badge stays “paired” / “paired · offline”; never flip to “seen” while session key exists.
-5. Ship as patch version bump (e.g. `0.2.1`) so installed 0.2.0 clients can Download update.
+1. **UI shell**: tab bar + four panels in `ui/`; migrate current sections into Home / Settings; new Share + History panels; keep AsolutionsZ branding visible (Settings or footer).
+2. **Wire protocol**: extend TCP framing with chunked `file-offer` / `file-chunk` / `file-ack` (or length-prefixed binary frames) over the paired socket; encrypt chunks with existing session key; emit progress events to the renderer.
+3. **Receive path**: write to `path.join(app.getPath("downloads"), "ClipShare", …)`; unique names on collision.
+4. **History store**: JSON file under `app.getPath("userData")` (simple, no native SQLite dep); append/prune API in main; IPC for list/mutate; record outbound/inbound text (from clip path) and file transfers.
+5. **Version**: bump to **0.4.0** when shipping (protocol + UX feature).
 
 ## Files to touch
-- `electron/net.ts` — prune vs keep paired; reconnect on hello
-- `electron/main.ts` — notification state machine
-- `electron/notify.ts` — optional single-active / clearer keys
-- `package.json` — version bump
-- `README.md` — brief note if needed
+- `ui/index.html`, `ui/styles.css`, `ui/app.js` — tabs + Share + History
+- `electron/types.ts` — wire + history + transfer types
+- `electron/net.ts` — chunked file transfer + progress hooks
+- `electron/main.ts`, `electron/preload.ts` — IPC (pick files, send, progress, history CRUD, open path)
+- `electron/history-store.ts` (new) — JSON persistence
+- `electron/clipboard-watch.ts` / clip handler — optional history entries for text
+- `README.md` — tabs, file receive folder, size limits
+- `.aidlc-fast/brief.md` — this contract
+- tests/smoke as needed for framing or history prune
 
 ## E2E scenarios
-- [x] Pair A↔B → quit B briefly → A shows offline (not unpaired) → start B → A shows paired/reconnected without new code; one offline + one reconnected toast. _(logic covered; confirm on 0.2.1 install)_
-- [x] Explicit Unpair → unpaired toast once; peer can become “seen” again.
-- [x] No flood of unpaired toasts during flaky discovery.
-- [x] `npm test` / typecheck pass; rebuild Win installer for new version.
+- [x] Tab bar switches Home / Share / History / Settings without losing pairing state. _(static UI + browser)_
+- [x] Share/History/Settings panels render; transfer progress UI + history actions wired to IPC.
+- [x] Settings still renames device, toggles sync, and surfaces update UI.
+- [x] `npm run typecheck` and `npm test` pass.
+- [ ] Live two-device file send confirm after install (manual / post-release).
 
 ## Notes
-- Session keys are still in-memory (lost on full app restart)—out of scope unless we add quick persist; this fix targets disconnect while both apps stay running / short gaps.
-- Build version in use today is likely `0.2.0`; this lands as the next patch.
+- Prefer JSON history over SQLite for zero native deps; revisit if volume becomes an issue.
+- Clipboard **images** as automatic file transfers can be a follow-up; this slice is explicit file/image send from Share.
+- Out of scope: cloud sync of history, multi-peer broadcast of one file, resume of interrupted transfers across app restarts.

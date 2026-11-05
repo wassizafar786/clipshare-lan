@@ -4,20 +4,34 @@ import net, {
   type Server as NetServer,
   type Socket as NetSocket,
 } from "node:net";
-import { randomBytes } from "node:crypto";
+import {
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  renameSync,
+  unlinkSync,
+} from "node:fs";
+import { basename, extname, join } from "node:path";
+import { randomBytes, randomUUID } from "node:crypto";
 import { networkInterfaces } from "node:os";
 import {
+  decryptBytes,
   decryptPayload,
   deriveKeyFromPairingCode,
+  encryptBytes,
   encryptPayload,
   generatePairingCode,
 } from "./crypto-util";
 import {
   deviceKindFromPlatform,
+  FILE_CHUNK_BYTES,
+  MAX_FILE_BYTES,
   normalizeDeviceKind,
   type AppStateSnapshot,
   type DeviceKind,
   type PeerInfo,
+  type TransferProgress,
   type WireMessage,
 } from "./types";
 
@@ -27,6 +41,25 @@ const BROADCAST = "255.255.255.255";
 const PEER_STALE_MS = 12_000;
 /** Min gap between auto-reconnect attempts for a paired peer. */
 const RECONNECT_COOLDOWN_MS = 3_000;
+
+type IncomingFile = {
+  peerId: string;
+  peerName: string;
+  name: string;
+  size: number;
+  mime: string;
+  totalChunks: number;
+  received: number;
+  nextIndex: number;
+  tempPath: string;
+  stream: ReturnType<typeof createWriteStream>;
+};
+
+type PendingAck = {
+  resolve: () => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
 
 function localIpv4s(): string[] {
   const out: string[] = [];
@@ -73,6 +106,14 @@ function parseLine(raw: string): WireMessage | null {
 }
 
 export type ClipHandler = (text: string, fromPeer: string) => void;
+export type FileReceivedHandler = (info: {
+  peerId: string;
+  peerName: string;
+  fileName: string;
+  filePath: string;
+  size: number;
+  mime: string;
+}) => void;
 
 export class ClipMeshNetwork {
   readonly deviceId: string;
@@ -80,6 +121,8 @@ export class ClipMeshNetwork {
   readonly deviceKind: DeviceKind;
   listenPort = 0;
   syncEnabled = true;
+  /** Directory for received files (Downloads/ClipShare). */
+  receiveDir = "";
 
   private pairingCode: string | null = null;
   private pairingSalt: Buffer | null = null;
@@ -92,6 +135,9 @@ export class ClipMeshNetwork {
   private peers = new Map<string, PeerInfo>();
   private sessionKeys = new Map<string, Buffer>();
   private sockets = new Map<string, NetSocket>();
+  private transfers = new Map<string, TransferProgress>();
+  private incoming = new Map<string, IncomingFile>();
+  private pendingAcks = new Map<string, PendingAck>();
 
   private udp: DgramSocket | null = null;
   private tcp: NetServer | null = null;
@@ -99,18 +145,23 @@ export class ClipMeshNetwork {
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectAttemptAt = new Map<string, number>();
   private onClip: ClipHandler;
+  private onFileReceived: FileReceivedHandler;
   private onChange: () => void;
 
   constructor(opts: {
     deviceId: string;
     deviceName: string;
+    receiveDir: string;
     onClip: ClipHandler;
+    onFileReceived: FileReceivedHandler;
     onChange: () => void;
   }) {
     this.deviceId = opts.deviceId;
     this.deviceName = opts.deviceName;
+    this.receiveDir = opts.receiveDir;
     this.deviceKind = deviceKindFromPlatform();
     this.onClip = opts.onClip;
+    this.onFileReceived = opts.onFileReceived;
     this.onChange = opts.onChange;
   }
 
@@ -131,7 +182,16 @@ export class ClipMeshNetwork {
       updateAvailable: false,
       updateVersion: null,
       updateUrl: null,
+      updateStatus: "idle",
+      updateProgress: null,
+      updateError: null,
+      transfers: [...this.transfers.values()],
+      history: [],
     };
+  }
+
+  listTransfers(): TransferProgress[] {
+    return [...this.transfers.values()];
   }
 
   /** Drop session with a peer (local unpair). */
@@ -225,8 +285,166 @@ export class ClipMeshNetwork {
     }
   }
 
+  /** Send a local file to a paired peer (encrypted chunks + progress). */
+  async sendFile(
+    peerId: string,
+    filePath: string,
+    opts?: { size?: number; mime?: string; fileName?: string },
+  ): Promise<TransferProgress> {
+    const peer = this.peers.get(peerId);
+    if (!peer?.paired) throw new Error("Peer is not paired");
+    const key = this.sessionKeys.get(peerId);
+    if (!key) throw new Error("No session key — re-pair the device");
+
+    const fileName = opts?.fileName || basename(filePath);
+    const size = opts?.size;
+    if (size == null) throw new Error("File size required");
+    if (size <= 0) throw new Error("Empty file");
+    if (size > MAX_FILE_BYTES) {
+      throw new Error(`File too large (max ${Math.floor(MAX_FILE_BYTES / (1024 * 1024))} MB)`);
+    }
+
+    const mime = opts?.mime || guessMime(fileName);
+    const transferId = randomUUID();
+    const totalChunks = Math.ceil(size / FILE_CHUNK_BYTES) || 1;
+
+    const progress: TransferProgress = {
+      transferId,
+      peerId,
+      peerName: peer.name,
+      direction: "out",
+      fileName,
+      bytesDone: 0,
+      bytesTotal: size,
+      status: "active",
+    };
+    this.transfers.set(transferId, progress);
+    this.onChange();
+
+    try {
+      await this.ensureConnected(peer);
+      this.send(peerId, {
+        type: "file-offer",
+        id: this.deviceId,
+        transferId,
+        name: fileName,
+        size,
+        mime,
+      });
+      // Wait for ack index -1 meaning offer accepted (we use index -1)
+      await this.waitAck(transferId, -1);
+
+      const stream = createReadStream(filePath, { highWaterMark: FILE_CHUNK_BYTES });
+      let index = 0;
+      let sent = 0;
+      for await (const chunk of stream) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        this.send(peerId, {
+          type: "file-chunk",
+          id: this.deviceId,
+          transferId,
+          index,
+          total: totalChunks,
+          cipherB64: encryptBytes(buf, key),
+        });
+        await this.waitAck(transferId, index);
+        sent += buf.length;
+        index += 1;
+        progress.bytesDone = sent;
+        this.transfers.set(transferId, { ...progress });
+        this.onChange();
+      }
+
+      this.send(peerId, {
+        type: "file-done",
+        id: this.deviceId,
+        transferId,
+      });
+      progress.bytesDone = size;
+      progress.status = "done";
+      this.transfers.set(transferId, { ...progress });
+      this.onChange();
+      return progress;
+    } catch (err) {
+      const reason = String((err as Error)?.message || err);
+      progress.status = "error";
+      progress.error = reason;
+      this.transfers.set(transferId, { ...progress });
+      try {
+        this.send(peerId, {
+          type: "file-error",
+          id: this.deviceId,
+          transferId,
+          reason,
+        });
+      } catch {
+        /* offline */
+      }
+      this.onChange();
+      throw err;
+    }
+  }
+
   markLocalClipboard(text: string): void {
     this.lastAppliedHash = Buffer.from(text).toString("base64url").slice(0, 32);
+  }
+
+  private waitAck(transferId: string, index: number): Promise<void> {
+    const key = `${transferId}:${index}`;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingAcks.delete(key);
+        reject(new Error("Transfer timed out waiting for ack"));
+      }, 30_000);
+      this.pendingAcks.set(key, { resolve, reject, timer });
+    });
+  }
+
+  private resolveAck(transferId: string, index: number): void {
+    const key = `${transferId}:${index}`;
+    const pending = this.pendingAcks.get(key);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingAcks.delete(key);
+    pending.resolve();
+  }
+
+  private uniqueReceivePath(fileName: string): string {
+    mkdirSync(this.receiveDir, { recursive: true });
+    const safe = fileName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").slice(0, 180) || "file";
+    let candidate = join(this.receiveDir, safe);
+    if (!existsSafe(candidate)) return candidate;
+    const ext = extname(safe);
+    const base = basename(safe, ext);
+    for (let i = 1; i < 10_000; i++) {
+      candidate = join(this.receiveDir, `${base} (${i})${ext}`);
+      if (!existsSafe(candidate)) return candidate;
+    }
+    return join(this.receiveDir, `${base}-${randomUUID()}${ext}`);
+  }
+
+  private abortIncoming(transferId: string, reason: string): void {
+    const inc = this.incoming.get(transferId);
+    if (inc) {
+      try {
+        inc.stream.destroy();
+      } catch {
+        /* ignore */
+      }
+      try {
+        unlinkSync(inc.tempPath);
+      } catch {
+        /* ignore */
+      }
+      this.incoming.delete(transferId);
+    }
+    const t = this.transfers.get(transferId);
+    if (t) {
+      t.status = "error";
+      t.error = reason;
+      this.transfers.set(transferId, { ...t });
+      this.onChange();
+    }
   }
 
   setSyncEnabled(on: boolean): void {
@@ -522,7 +740,209 @@ export class ClipMeshNetwork {
       }
       return;
     }
+
+    if (msg.type === "file-offer") {
+      await this.handleFileOffer(msg, socket);
+      return;
+    }
+    if (msg.type === "file-chunk") {
+      await this.handleFileChunk(msg);
+      return;
+    }
+    if (msg.type === "file-ack") {
+      this.resolveAck(msg.transferId, msg.index);
+      return;
+    }
+    if (msg.type === "file-done") {
+      // sender finished; receiver already finalized on last chunk
+      return;
+    }
+    if (msg.type === "file-error") {
+      this.abortIncoming(msg.transferId, msg.reason);
+      const out = this.transfers.get(msg.transferId);
+      if (out && out.direction === "out") {
+        out.status = "error";
+        out.error = msg.reason;
+        this.transfers.set(msg.transferId, { ...out });
+        this.onChange();
+      }
+    }
   }
+
+  private async handleFileOffer(
+    msg: Extract<WireMessage, { type: "file-offer" }>,
+    socket: NetSocket,
+  ): Promise<void> {
+    const key = this.sessionKeys.get(msg.id);
+    if (!key) {
+      socket.write(
+        JSON.stringify({
+          type: "file-error",
+          id: this.deviceId,
+          transferId: msg.transferId,
+          reason: "not paired",
+        }) + "\n",
+      );
+      return;
+    }
+    if (msg.size <= 0 || msg.size > MAX_FILE_BYTES) {
+      this.send(msg.id, {
+        type: "file-error",
+        id: this.deviceId,
+        transferId: msg.transferId,
+        reason: "file size rejected",
+      });
+      return;
+    }
+
+    mkdirSync(this.receiveDir, { recursive: true });
+    const tempPath = join(this.receiveDir, `.partial-${msg.transferId}`);
+    const stream = createWriteStream(tempPath);
+    const peerName = this.peers.get(msg.id)?.name || msg.id.slice(0, 8);
+    const totalChunks = Math.ceil(msg.size / FILE_CHUNK_BYTES) || 1;
+    this.incoming.set(msg.transferId, {
+      peerId: msg.id,
+      peerName,
+      name: msg.name,
+      size: msg.size,
+      mime: msg.mime,
+      totalChunks,
+      received: 0,
+      nextIndex: 0,
+      tempPath,
+      stream,
+    });
+    this.transfers.set(msg.transferId, {
+      transferId: msg.transferId,
+      peerId: msg.id,
+      peerName,
+      direction: "in",
+      fileName: msg.name,
+      bytesDone: 0,
+      bytesTotal: msg.size,
+      status: "active",
+    });
+    this.onChange();
+    this.send(msg.id, {
+      type: "file-ack",
+      id: this.deviceId,
+      transferId: msg.transferId,
+      index: -1,
+    });
+  }
+
+  private async handleFileChunk(
+    msg: Extract<WireMessage, { type: "file-chunk" }>,
+  ): Promise<void> {
+    const key = this.sessionKeys.get(msg.id);
+    const inc = this.incoming.get(msg.transferId);
+    if (!key || !inc) return;
+    if (msg.index !== inc.nextIndex) {
+      this.abortIncoming(msg.transferId, "out-of-order chunk");
+      this.send(msg.id, {
+        type: "file-error",
+        id: this.deviceId,
+        transferId: msg.transferId,
+        reason: "out-of-order chunk",
+      });
+      return;
+    }
+    try {
+      const plain = decryptBytes(msg.cipherB64, key);
+      if (!inc.stream.write(plain)) {
+        await new Promise<void>((resolve, reject) => {
+          const onDrain = () => {
+            inc.stream.off("error", onErr);
+            resolve();
+          };
+          const onErr = (err: Error) => {
+            inc.stream.off("drain", onDrain);
+            reject(err);
+          };
+          inc.stream.once("drain", onDrain);
+          inc.stream.once("error", onErr);
+        });
+      }
+      inc.received += plain.length;
+      inc.nextIndex += 1;
+      const progress = this.transfers.get(msg.transferId);
+      if (progress) {
+        progress.bytesDone = Math.min(inc.received, inc.size);
+        this.transfers.set(msg.transferId, { ...progress });
+        this.onChange();
+      }
+      this.send(msg.id, {
+        type: "file-ack",
+        id: this.deviceId,
+        transferId: msg.transferId,
+        index: msg.index,
+      });
+
+      if (inc.nextIndex >= inc.totalChunks || inc.received >= inc.size) {
+        await new Promise<void>((resolve, reject) => {
+          inc.stream.end((err: Error | null | undefined) => (err ? reject(err) : resolve()));
+        });
+        const finalPath = this.uniqueReceivePath(inc.name);
+        renameSync(inc.tempPath, finalPath);
+        this.incoming.delete(msg.transferId);
+        const done: TransferProgress = {
+          transferId: msg.transferId,
+          peerId: inc.peerId,
+          peerName: inc.peerName,
+          direction: "in",
+          fileName: inc.name,
+          bytesDone: inc.size,
+          bytesTotal: inc.size,
+          status: "done",
+          savedPath: finalPath,
+        };
+        this.transfers.set(msg.transferId, done);
+        this.onChange();
+        this.onFileReceived({
+          peerId: inc.peerId,
+          peerName: inc.peerName,
+          fileName: inc.name,
+          filePath: finalPath,
+          size: inc.size,
+          mime: inc.mime,
+        });
+      }
+    } catch (err) {
+      const reason = String((err as Error)?.message || err);
+      this.abortIncoming(msg.transferId, reason);
+      try {
+        this.send(msg.id, {
+          type: "file-error",
+          id: this.deviceId,
+          transferId: msg.transferId,
+          reason,
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
+
+function existsSafe(path: string): boolean {
+  return existsSync(path);
+}
+
+function guessMime(fileName: string): string {
+  const ext = extname(fileName).toLowerCase();
+  const map: Record<string, string> = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".zip": "application/zip",
+    ".mp4": "video/mp4",
+    ".mp3": "audio/mpeg",
+  };
+  return map[ext] || "application/octet-stream";
 }
 
 /** Pure helpers exported for smoke tests (no sockets). */
@@ -530,6 +950,10 @@ export const protocolTest = {
   deriveKeyFromPairingCode,
   encryptPayload,
   decryptPayload,
+  encryptBytes,
+  decryptBytes,
   generatePairingCode,
   localIpv4s,
+  MAX_FILE_BYTES,
+  FILE_CHUNK_BYTES,
 };

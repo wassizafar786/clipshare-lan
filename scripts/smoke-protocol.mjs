@@ -44,6 +44,29 @@ try {
 }
 assert.equal(failed, true, "wrong code must not decrypt");
 
+function encryptBytes(plain, key) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const enc = Buffer.concat([cipher.update(plain), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return Buffer.concat([iv, tag, enc]).toString("base64");
+}
+
+function decryptBytes(blobB64, key) {
+  const buf = Buffer.from(blobB64, "base64");
+  const iv = buf.subarray(0, 12);
+  const tag = buf.subarray(12, 28);
+  const data = buf.subarray(28);
+  const decipher = createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(data), decipher.final()]);
+}
+
+const fileChunk = randomBytes(48 * 1024);
+const fileCipher = encryptBytes(fileChunk, keyA);
+assert.deepEqual(decryptBytes(fileCipher, keyB), fileChunk);
+
 console.log("smoke-protocol: OK");
 console.log("  pairing derive + AES-GCM roundtrip");
 console.log("  unpaired/wrong code rejected");
+console.log("  file-chunk AES-GCM bytes roundtrip");

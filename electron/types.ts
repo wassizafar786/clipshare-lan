@@ -26,7 +26,69 @@ export type WireMessage =
   | { type: "pair-reject"; id: string; reason: string }
   | { type: "clip"; id: string; cipherB64: string; seq: number }
   | { type: "ping"; id: string }
-  | { type: "pong"; id: string };
+  | { type: "pong"; id: string }
+  | {
+      type: "file-offer";
+      id: string;
+      transferId: string;
+      name: string;
+      size: number;
+      mime: string;
+    }
+  | {
+      type: "file-chunk";
+      id: string;
+      transferId: string;
+      index: number;
+      total: number;
+      cipherB64: string;
+    }
+  | {
+      type: "file-ack";
+      id: string;
+      transferId: string;
+      index: number;
+    }
+  | {
+      type: "file-done";
+      id: string;
+      transferId: string;
+    }
+  | {
+      type: "file-error";
+      id: string;
+      transferId: string;
+      reason: string;
+    };
+
+export type TransferStatus = "active" | "done" | "error";
+
+export interface TransferProgress {
+  transferId: string;
+  peerId: string;
+  peerName: string;
+  direction: "in" | "out";
+  fileName: string;
+  bytesDone: number;
+  bytesTotal: number;
+  status: TransferStatus;
+  error?: string;
+  savedPath?: string;
+}
+
+export interface HistoryEntry {
+  id: string;
+  kind: "text" | "file";
+  direction: "in" | "out";
+  peerId: string;
+  peerName: string;
+  createdAt: number;
+  text?: string;
+  fileName?: string;
+  filePath?: string;
+  size?: number;
+  mime?: string;
+}
 
 export interface AppStateSnapshot {
   deviceId: string;
@@ -45,7 +107,24 @@ export interface AppStateSnapshot {
   updateAvailable: boolean;
   updateVersion: string | null;
   updateUrl: string | null;
+  updateStatus:
+    | "idle"
+    | "checking"
+    | "available"
+    | "downloading"
+    | "downloaded"
+    | "error"
+    | "dev";
+  updateProgress: number | null;
+  updateError: string | null;
+  transfers: TransferProgress[];
+  history: HistoryEntry[];
 }
+
+/** Soft cap per file for tray-app transfers. */
+export const MAX_FILE_BYTES = 100 * 1024 * 1024;
+/** Plaintext chunk size before encryption. */
+export const FILE_CHUNK_BYTES = 48 * 1024;
 
 export function deviceKindFromPlatform(platform = process.platform): DeviceKind {
   switch (platform) {

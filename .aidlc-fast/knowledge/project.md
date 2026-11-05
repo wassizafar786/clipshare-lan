@@ -5,6 +5,10 @@
 
 ## Standing rules
 
+- --fact File transfers save under Downloads/ClipShare; history JSON is in app userData; max ~100MB per file (learned 2026-11-05) <!-- cid:261105-ui-tabs-instead-of-long-:b9633e3d6212ce07 -->
+
+- --preference Prefer tabbed ClipShare UI (Home · Share · History · Settings) over one long scrolling page (learned 2026-11-05) <!-- cid:261105-ui-tabs-instead-of-long-:3f5c850cd164313a -->
+
 - (none yet)
 
 ## UI

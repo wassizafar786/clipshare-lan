@@ -42,14 +42,14 @@ console.log(`
 ────────────────────────────────────────
 ClipShare ${tag} artifacts are under release/
 
-Next (publish so clients see the update bar):
+For in-app Update now, upload NSIS .exe + latest.yml (Windows)
+and/or .zip + .dmg + latest-mac.yml (macOS) to the GitHub Release:
+
   1. git add -A && git commit -m "Release ${tag}"
   2. git tag ${tag}
   3. git push origin main --tags
-  4. Create a GitHub Release for ${tag} and upload files from release/
-     gh release create ${tag} release/* --title "${tag}" --generate-notes
+  4. gh release create ${tag} release/ClipShare-LAN-* release/latest*.yml --title "${tag}" --generate-notes
 
-Clients check: https://github.com/wassizafar786/clipshare-lan/releases/latest
-Override repo with CLIPSHARE_UPDATE_REPO=owner/name
+Do not omit latest.yml / latest-mac.yml — electron-updater needs them.
 ────────────────────────────────────────
 `);

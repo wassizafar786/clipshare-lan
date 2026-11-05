@@ -11,14 +11,21 @@
   </head>
   <body>
     <div id="updateBar" class="update-bar hidden" role="status">
-      <span id="updateText">A newer version is available.</span>
+      <div class="update-copy">
+        <span id="updateText">A newer version is available.</span>
+        <div id="updateProgressWrap" class="update-progress hidden" aria-hidden="true">
+          <div id="updateProgressBar" class="update-progress-bar"></div>
+        </div>
+      </div>
       <div class="row">
-        <button id="btnUpdate" type="button">Download update</button>
+        <button id="btnUpdate" type="button">Update now</button>
+        <button id="btnUpdateFallback" type="button" class="ghost hidden">Open download page</button>
         <button id="btnDismissUpdate" type="button" class="ghost">Dismiss</button>
       </div>
     </div>
-    <div class="page">
-      <header class="row between">
+
+    <div class="shell">
+      <header class="row between app-header">
         <div>
           <h1>ClipShare</h1>
           <p class="sub">Same Wi‑Fi clipboard · tray / menu bar</p>
@@ -26,76 +33,155 @@
         <p class="version" id="appVersion">v—</p>
       </header>
 
-      <section class="card">
-        <label>This device</label>
-        <input id="deviceName" type="text" />
-        <p class="meta" id="deviceMeta"></p>
-        <p class="hint" id="firewallHint">
-          Allow private network / local network for ClipShare (UDP 41234). Port is shown above.
-        </p>
-        <label class="row">
-          <input id="syncEnabled" type="checkbox" checked />
-          Sync clipboard
-        </label>
-      </section>
+      <nav class="tabs" role="tablist" aria-label="ClipShare sections">
+        <button type="button" class="tab active" role="tab" aria-selected="true" data-tab="home" id="tab-home">
+          Home
+        </button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="share" id="tab-share">
+          Share
+        </button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="history" id="tab-history">
+          History
+        </button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="settings" id="tab-settings">
+          Settings
+        </button>
+      </nav>
 
-      <section class="card radar-card">
-        <div class="row between">
-          <h2>Find &amp; pair</h2>
-          <button id="btnPair" type="button">Start pairing</button>
-        </div>
-        <p class="hint" id="radarHint">
-          Start pairing to show a code. Nearby devices appear on the radar.
-        </p>
-
-        <div class="radar" id="radar" aria-label="LAN device radar">
-          <div class="radar-disk" aria-hidden="true">
-            <div class="radar-rings">
-              <span></span><span></span><span></span>
+      <div class="tab-panels">
+        <section
+          id="panel-home"
+          class="tab-panel active"
+          role="tabpanel"
+          aria-labelledby="tab-home"
+        >
+          <div class="card radar-card">
+            <div class="row between">
+              <h2>Find &amp; pair</h2>
+              <button id="btnPair" type="button">Start pairing</button>
             </div>
-            <div class="radar-sweep"></div>
-            <div class="radar-center" id="radarCenter">
-              <p id="pairCode" class="code hidden">------</p>
-              <p class="center-label" id="centerLabel">You</p>
-              <p class="center-kind" id="centerKind">PC</p>
+            <p class="hint" id="radarHint">
+              Start pairing to show a code. Nearby devices appear on the radar.
+            </p>
+
+            <div class="radar" id="radar" aria-label="LAN device radar">
+              <div class="radar-disk" aria-hidden="true">
+                <div class="radar-rings">
+                  <span></span><span></span><span></span>
+                </div>
+                <div class="radar-sweep"></div>
+                <div class="radar-center" id="radarCenter">
+                  <p id="pairCode" class="code hidden">------</p>
+                  <p class="center-label" id="centerLabel">You</p>
+                  <p class="center-kind" id="centerKind">PC</p>
+                </div>
+              </div>
+              <div id="radarPeers" class="radar-peers"></div>
+            </div>
+
+            <button id="btnCancelPair" class="ghost hidden" type="button">Cancel pairing</button>
+
+            <ul id="peers" class="peer-list" aria-live="polite"></ul>
+          </div>
+
+          <div class="card" id="manualPairCard">
+            <h2>Enter pairing code</h2>
+            <p class="hint">
+              On the other device tap <strong>Start pairing</strong>, then pick that device here and type the code.
+            </p>
+            <label for="manualPeer">Device</label>
+            <select id="manualPeer"></select>
+            <label for="manualCode">6-digit code</label>
+            <div class="row">
+              <input id="manualCode" type="text" inputmode="numeric" maxlength="6" placeholder="482913" />
+              <button id="btnManualPair" type="button">Pair</button>
+            </div>
+            <p id="manualPairError" class="error hidden" role="alert"></p>
+
+            <h2 class="subhead">Add by host:port</h2>
+            <p class="hint">If discovery is blocked by a firewall, add the other device manually (port is under Settings).</p>
+            <div class="row">
+              <input id="manualHost" type="text" placeholder="192.168.1.20" />
+              <input id="manualPort" type="text" placeholder="port" style="max-width: 90px" />
+              <button id="btnManual" type="button">Add</button>
             </div>
           </div>
-          <div id="radarPeers" class="radar-peers"></div>
-        </div>
+        </section>
 
-        <button id="btnCancelPair" class="ghost hidden" type="button">Cancel pairing</button>
+        <section
+          id="panel-share"
+          class="tab-panel"
+          role="tabpanel"
+          aria-labelledby="tab-share"
+          hidden
+        >
+          <div class="card">
+            <h2>Send files</h2>
+            <p class="hint">Pick a paired online device, then choose files or images (max 100&nbsp;MB each).</p>
+            <label for="sharePeer">Send to</label>
+            <select id="sharePeer"></select>
+            <div class="row share-actions">
+              <button id="btnPickFiles" type="button">Choose files…</button>
+              <button id="btnOpenReceive" type="button" class="ghost">Open Downloads/ClipShare</button>
+            </div>
+            <p id="shareError" class="error hidden" role="alert"></p>
+            <ul id="transferList" class="transfer-list" aria-live="polite"></ul>
+          </div>
+        </section>
 
-        <ul id="peers" class="peer-list" aria-live="polite"></ul>
-      </section>
+        <section
+          id="panel-history"
+          class="tab-panel"
+          role="tabpanel"
+          aria-labelledby="tab-history"
+          hidden
+        >
+          <div class="card">
+            <div class="row between">
+              <h2>History</h2>
+              <button id="btnClearHistory" type="button" class="ghost tiny">Clear all</button>
+            </div>
+            <p class="hint">Recent clipboard text and file transfers on this device.</p>
+            <ul id="historyList" class="history-list" aria-live="polite"></ul>
+          </div>
+        </section>
 
-      <section class="card" id="manualPairCard">
-        <h2>Enter pairing code</h2>
-        <p class="hint">
-          On the other device tap <strong>Start pairing</strong>, then pick that device here and type the code.
-        </p>
-        <label for="manualPeer">Device</label>
-        <select id="manualPeer"></select>
-        <label for="manualCode">6-digit code</label>
-        <div class="row">
-          <input id="manualCode" type="text" inputmode="numeric" maxlength="6" placeholder="482913" />
-          <button id="btnManualPair" type="button">Pair</button>
-        </div>
-        <p id="manualPairError" class="error hidden" role="alert"></p>
+        <section
+          id="panel-settings"
+          class="tab-panel"
+          role="tabpanel"
+          aria-labelledby="tab-settings"
+          hidden
+        >
+          <div class="card">
+            <h2>This device</h2>
+            <label for="deviceName">Device name</label>
+            <input id="deviceName" type="text" />
+            <p class="meta" id="deviceMeta"></p>
+            <p class="hint" id="firewallHint">
+              Allow private network / local network for ClipShare (UDP 41234). Port is shown above.
+            </p>
+            <label class="row">
+              <input id="syncEnabled" type="checkbox" checked />
+              Sync clipboard
+            </label>
+          </div>
 
-        <h2 class="subhead">Add by host:port</h2>
-        <p class="hint">If discovery is blocked by a firewall, add the other device manually (port is under This device).</p>
-        <div class="row">
-          <input id="manualHost" type="text" placeholder="192.168.1.20" />
-          <input id="manualPort" type="text" placeholder="port" style="max-width: 90px" />
-          <button id="btnManual" type="button">Add</button>
-        </div>
-      </section>
+          <div class="card">
+            <h2>Updates</h2>
+            <p class="hint" id="settingsUpdateHint">Checks GitHub Releases automatically when installed.</p>
+            <div class="row">
+              <button id="btnCheckUpdate" type="button">Check for updates</button>
+            </div>
+          </div>
 
-      <footer class="powered">
-        <span>Powered by</span>
-        <img src="asolutionsz-logo.jpg" alt="AsolutionsZ" width="28" height="28" />
-        <strong>AsolutionsZ</strong>
-      </footer>
+          <footer class="powered">
+            <span>Powered by</span>
+            <img src="asolutionsz-logo.jpg" alt="AsolutionsZ" width="28" height="28" />
+            <strong>AsolutionsZ</strong>
+          </footer>
+        </section>
+      </div>
     </div>
 
     <dialog id="pairDialog">
