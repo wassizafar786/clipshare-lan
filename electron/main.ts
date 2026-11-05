@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { ClipMeshNetwork } from "./net";
 import { startClipboardWatch, writeClipboardText } from "./clipboard-watch";
-import { notifyOnce } from "./notify";
+import { notifyOnce, notifyPeerEvent } from "./notify";
 import { checkForUpdate, type UpdateInfo } from "./update-check";
 import type { AppStateSnapshot, PeerInfo } from "./types";
 
@@ -104,13 +104,15 @@ function watchTransitions(snap: AppStateSnapshot): void {
     seen.add(peer.id);
     maybeNotifyPeer(peer);
   }
+  // Peers removed from the map (unpaired “seen” only) — no unpaired toast
   for (const [id, prev] of peerLink) {
     if (seen.has(id)) continue;
-    if (prev.paired) {
-      notifyOnce(
-        `gone:${id}`,
-        "ClipShare · Device unpaired",
-        `${prev.name} is no longer on the network`,
+    if (prev.paired && prev.connected) {
+      notifyPeerEvent(
+        id,
+        "offline",
+        "ClipShare · Device offline",
+        `${prev.name} went offline`,
       );
     }
     peerLink.delete(id);
@@ -126,19 +128,39 @@ function maybeNotifyPeer(peer: PeerInfo): void {
   });
   if (!notifyReady || !prev) return;
 
+  if (!prev.paired && peer.paired) {
+    notifyPeerEvent(
+      peer.id,
+      "paired",
+      "ClipShare · Device paired",
+      `${peer.name} is paired`,
+    );
+    return;
+  }
   if (prev.paired && !peer.paired) {
-    notifyOnce(
-      `unpair:${peer.id}`,
+    notifyPeerEvent(
+      peer.id,
+      "unpaired",
       "ClipShare · Device unpaired",
       `${peer.name} was unpaired`,
     );
     return;
   }
   if (prev.paired && peer.paired && prev.connected && !peer.connected) {
-    notifyOnce(
-      `offline:${peer.id}`,
+    notifyPeerEvent(
+      peer.id,
+      "offline",
       "ClipShare · Device offline",
       `${peer.name} went offline`,
+    );
+    return;
+  }
+  if (prev.paired && peer.paired && !prev.connected && peer.connected) {
+    notifyPeerEvent(
+      peer.id,
+      "reconnected",
+      "ClipShare · Device reconnected",
+      `${peer.name} is back online`,
     );
   }
 }

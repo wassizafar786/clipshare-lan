@@ -1,43 +1,42 @@
 # Brief
 
 ## Intent
-Fix post-install discovery and pairing UX, prune stale peers when a machine quits, add AsolutionsZ “powered by” branding, and ship a new version whose update bar downloads the correct Mac/Windows installer.
+Fix paired-device reconnect after disconnect, and send one clear notification per real link event (paired / unpaired / offline / reconnected)—not repeated “unpaired” while both devices are still on the LAN.
 
 ## Scope
 bugfix
 
 ## Acceptance criteria
-- [x] Packaged Mac + Windows apps discover each other on the same LAN more reliably (multi-homed broadcast / per-interface hello; document firewall for UDP `41234` + TCP listen port).
-- [x] Manual pairing is obvious again: always-visible section to enter **pairing code** (and host:port fallback), not buried only in collapsed `<details>`.
-- [x] Peers that stop advertising (app quit / offline) disappear from radar/list after a short stale timeout (and paired peers show offline then clear if gone).
-- [x] UI shows company mark **AsolutionsZ** with “Powered by” (logo asset vendored in repo; LinkedIn URL used only to fetch once at build/dev time if needed).
-- [x] Bump app version (e.g. `0.1.1` or `0.2.0`); update check offers platform-specific download from GitHub Release assets (Win `.exe` / Mac `.dmg|.zip`) via Update button — not only the release page when an asset URL is known.
-- [x] Rebuild/publish path documented so both machines can install the new version and see the update bar from `0.1.0`.
+- [x] Temporary discovery gaps do **not** show as “unpaired”. Only explicit Unpair (or clearing the session) may say unpaired.
+- [x] When a paired peer’s hellos stop briefly: mark **offline** (keep pairing); when hellos/TCP return: auto-reconnect and notify **reconnected** once.
+- [x] When a paired peer is gone longer / app quit: notify **offline** (or left network) once—not “unpaired”—and keep session so they come back as paired without re-entering the code.
+- [x] Notifications are one-per-transition per peer: paired · unpaired · offline · reconnected (no spam stacks of unpaired).
+- [x] Both Mac and Windows on the same Wi‑Fi with an existing pairing stay shown as **paired** (or paired · offline), not “seen” / needing a new code, after a brief disconnect.
+- [x] Existing clipboard sync after reconnect works without re-pairing when session keys still exist.
 
 ## Approach
-1. **Discovery:** Send UDP hello to `255.255.255.255` and each interface broadcast address; optionally bind/receive more robustly; surface listen port + “waiting for peers” + firewall hint in UI. Consider Windows firewall rule note in README/installer.
-2. **Stale peers:** Track `lastSeen` from hellos; prune unpaired peers after ~10–15s without hello; mark paired as offline then remove blip or keep offline badge; on socket close already mark disconnected.
-3. **Manual pin UX:** Promote “Enter code to pair” + peer picker or code+host fields above the fold; keep host:port as secondary but visible (not only nested details).
-4. **Branding:** Add `assets/asolutionsz-logo.png` + footer “Powered by AsolutionsZ”; tray/window icon can stay ClipShare or use logo if suitable size.
-5. **Updates:** Parse release asset list in `update-check.ts`; pick asset by `process.platform` / arch; `shell.openExternal(assetUrl)` (or download to Downloads). Bump `package.json` version for the next GitHub Release.
+1. **Peer lifecycle:** For peers with a session key, do not delete on stale prune—keep them in the map as `paired: true, connected: false` and refresh when hello returns; only prune unpaired “seen” peers. Optionally lengthen stale window slightly.
+2. **Auto-reconnect:** On hello for a peer that has `sessionKeys`, call `ensureConnected` (debounced) so TCP/sync comes back without user action.
+3. **Notifications (`main.ts` / `notify.ts`):**
+   - Remove `gone:` → “Device unpaired” for prune/removal.
+   - Emit: first become paired → Paired; explicit unpair → Unpaired; connected→false while paired → Offline; connected false→true while paired → Reconnected.
+   - Global “one at a time” or per-peer last-event so overlapping titles don’t pile up; keep debounce.
+4. **UI:** Badge stays “paired” / “paired · offline”; never flip to “seen” while session key exists.
+5. Ship as patch version bump (e.g. `0.2.1`) so installed 0.2.0 clients can Download update.
 
 ## Files to touch
-- `electron/net.ts` — broadcast per NIC; peer TTL prune
-- `electron/update-check.ts`, `electron/main.ts` — asset URL selection
-- `ui/index.html`, `ui/styles.css`, `ui/app.js` — manual pair UX, branding, hints
-- `assets/` — AsolutionsZ logo (+ copy via build)
+- `electron/net.ts` — prune vs keep paired; reconnect on hello
+- `electron/main.ts` — notification state machine
+- `electron/notify.ts` — optional single-active / clearer keys
 - `package.json` — version bump
-- `README.md` — firewall + release/update notes
-- `scripts/copy-ui.mjs` — copy branding assets if needed
+- `README.md` — brief note if needed
 
 ## E2E scenarios
-- [x] Two instances (or harness + simulated peers) show on radar; stop one → disappears within stale window. _(prune + multi-broadcast implemented; live LAN confirm on install)_
-- [x] Manual enter-code / host:port controls visible without expanding obscure details.
-- [x] Footer shows Powered by AsolutionsZ + logo.
-- [x] Update info with mocked newer release exposes platform download URL; Update opens/downloads it.
-- [x] `npm test` / typecheck pass; `dist:win` builds new version (`0.2.0`).
+- [x] Pair A↔B → quit B briefly → A shows offline (not unpaired) → start B → A shows paired/reconnected without new code; one offline + one reconnected toast. _(logic covered; confirm on 0.2.1 install)_
+- [x] Explicit Unpair → unpaired toast once; peer can become “seen” again.
+- [x] No flood of unpaired toasts during flaky discovery.
+- [x] `npm test` / typecheck pass; rebuild Win installer for new version.
 
 ## Notes
-- LinkedIn CDN logo URL may expire — vendor a local PNG under `assets/`.
-- True silent in-app installer replace is out of scope; “download update” = open correct release asset.
-- Mac artifact still built on Mac; Windows on Windows; both attached to the new GitHub Release tag.
+- Session keys are still in-memory (lost on full app restart)—out of scope unless we add quick persist; this fix targets disconnect while both apps stay running / short gaps.
+- Build version in use today is likely `0.2.0`; this lands as the next patch.

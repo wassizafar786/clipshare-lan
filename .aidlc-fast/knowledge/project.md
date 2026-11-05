@@ -17,6 +17,10 @@
 
 ## Desktop
 
+- Peer notifications: one event at a time — paired / unpaired / offline / reconnected (queued), not prune-as-unpaired spam. (learned 2026-11-05) <!-- cid:261105-we-are-getting-an-issue-:c67d6ac596819caf -->
+
+- Paired peers: never delete on stale hello — mark offline and auto-reconnect; only explicit Unpair may toast unpaired. (learned 2026-11-05) <!-- cid:261105-we-are-getting-an-issue-:33f917ae780f5331 -->
+
 - LAN discovery: broadcast hello to 255.255.255.255 and each NIC directed broadcast; prune peers with no hello ~12s so quit devices disappear. (learned 2026-10-29) <!-- cid:261029-we-got-some-issues-1-aft:53a1a9bb3736df57 -->
 
 - App updates: package.json version is source of truth; check GitHub releases/latest and show dismissible update bar (openExternal) — no silent install in v1. (learned 2026-10-28) <!-- cid:261028-we-need-to-build-the-fea:b640483cf72f22c5 -->

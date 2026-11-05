@@ -23,8 +23,10 @@ import {
 
 const DISCOVERY_PORT = 41234;
 const BROADCAST = "255.255.255.255";
-/** Drop peers with no hello for this long (quit / left Wi‑Fi). */
+/** Mark unpaired “seen” peers stale / paired peers offline after this quiet period. */
 const PEER_STALE_MS = 12_000;
+/** Min gap between auto-reconnect attempts for a paired peer. */
+const RECONNECT_COOLDOWN_MS = 3_000;
 
 function localIpv4s(): string[] {
   const out: string[] = [];
@@ -95,6 +97,7 @@ export class ClipMeshNetwork {
   private tcp: NetServer | null = null;
   private helloTimer: ReturnType<typeof setInterval> | null = null;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectAttemptAt = new Map<string, number>();
   private onClip: ClipHandler;
   private onChange: () => void;
 
@@ -283,6 +286,7 @@ export class ClipMeshNetwork {
         connected: this.sockets.has(m.id),
         kind: normalizeDeviceKind(m.kind),
       });
+      this.maybeReconnectPaired(m.id);
     });
     this.udp.bind(DISCOVERY_PORT, "0.0.0.0", () => {
       try {
@@ -312,17 +316,37 @@ export class ClipMeshNetwork {
     }
   }
 
-  /** Remove devices that stopped advertising (app quit / left network). Keep session keys. */
+  /**
+   * Unpaired “seen” peers: drop when hellos stop.
+   * Paired peers: keep in the list as offline (session key retained) so reconnect
+   * does not look like unpaired / require a new code.
+   */
   private pruneStalePeers(): void {
     const now = Date.now();
     let changed = false;
     for (const [id, peer] of this.peers) {
-      // Manual entries stay while connected; otherwise same stale window
       if (id.startsWith("manual:") && this.sockets.has(id)) {
         peer.lastSeen = now;
         continue;
       }
       if (now - peer.lastSeen <= PEER_STALE_MS) continue;
+
+      const hasSession = this.sessionKeys.has(id) || peer.paired;
+      if (hasSession) {
+        const sock = this.sockets.get(id);
+        if (sock) {
+          sock.destroy();
+          this.sockets.delete(id);
+        }
+        if (peer.connected) {
+          peer.connected = false;
+          peer.paired = true;
+          this.peers.set(id, peer);
+          changed = true;
+        }
+        continue;
+      }
+
       this.peers.delete(id);
       const sock = this.sockets.get(id);
       if (sock) {
@@ -332,6 +356,21 @@ export class ClipMeshNetwork {
       changed = true;
     }
     if (changed) this.onChange();
+  }
+
+  /** Re-open TCP to a paired peer when they reappear on the LAN. */
+  private maybeReconnectPaired(peerId: string): void {
+    if (!this.sessionKeys.has(peerId)) return;
+    if (this.sockets.has(peerId)) return;
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+    const now = Date.now();
+    const last = this.reconnectAttemptAt.get(peerId) ?? 0;
+    if (now - last < RECONNECT_COOLDOWN_MS) return;
+    this.reconnectAttemptAt.set(peerId, now);
+    void this.ensureConnected(peer).catch(() => {
+      /* peer may still be coming online */
+    });
   }
 
   private upsertPeer(peer: PeerInfo): void {

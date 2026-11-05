@@ -1,30 +1,30 @@
 # aidlc-fast state
 
 ## Project
-- **configured:** 2026-10-29T15:09:04.817Z
+- **configured:** 2026-11-05T10:19:30.612Z
 - **package:** 0.6.0
-- **lastChange:** next:done @ 2026-10-29T15:17:02.731Z
+- **lastChange:** next:done @ 2026-11-05T10:25:42.008Z
 - **summary:** existing (from .aidlc-fast/knowledge/project-summary.md)
 - **summaryPath:** `D:\Projects\Personal\clipshare-lan\.aidlc-fast\knowledge\project-summary.md`
 
 ## Active run
 - **status:** done
 - **scope:** bugfix
-- **intent:** we got some issues 1. After installing the exe unable to locate pairing devices on mac and windows 2. Lost positions where I can add manually pin code to pair 3. If I quit the app from one machine on other machine was still showing 4. Print company logo AsolutionsZ with powered by 5. Update should be download as update version on both machines
+- **intent:** We are getting an issue when two devices got disconnected reconnection is not successful every time getting notification unpaired. Notification should be one at a time e.g. device got paired send notification, device got unpaired send notification, device re-connected or paired send notification. As of now both Mac and Windows are live on the same network but showing unpaired. Using build version.
 - **currentStage:** done
 - **completed:** intent → brief → gate-plan → build → verify → e2e → gate-ship → learn → done
 - **gate-plan:** approved
 - **gate-ship:** approved
-- **updated:** 2026-10-29T15:17:02.724Z
+- **updated:** 2026-11-05T10:25:41.999Z
 
 ## Recent changes
-- 2026-10-29T15:17:02.731Z: next:done
-- 2026-10-29T15:17:02.716Z: complete:learn
-- 2026-10-29T15:17:01.186Z: learn:261029-we-got-some-issues-1-aft:f9e693ae6a019eed
-- 2026-10-29T15:16:59.763Z: learn:261029-we-got-some-issues-1-aft:53a1a9bb3736df57
-- 2026-10-29T15:16:45.239Z: next:learn
-- 2026-10-29T15:16:45.223Z: complete:gate-ship
-- 2026-10-29T15:16:45.208Z: approve:gate-ship
-- 2026-10-29T15:15:02.025Z: next:gate-ship
-- 2026-10-29T15:14:59.176Z: next:gate-ship
-- 2026-10-29T15:14:56.403Z: next:gate-ship
+- 2026-11-05T10:25:42.008Z: next:done
+- 2026-11-05T10:25:41.990Z: complete:learn
+- 2026-11-05T10:25:40.176Z: learn:261105-we-are-getting-an-issue-:c67d6ac596819caf
+- 2026-11-05T10:25:38.499Z: learn:261105-we-are-getting-an-issue-:33f917ae780f5331
+- 2026-11-05T10:25:25.567Z: next:learn
+- 2026-11-05T10:25:25.549Z: complete:gate-ship
+- 2026-11-05T10:25:25.533Z: approve:gate-ship
+- 2026-11-05T10:24:40.701Z: next:gate-ship
+- 2026-11-05T10:24:37.159Z: next:gate-ship
+- 2026-11-05T10:24:33.690Z: next:gate-ship
