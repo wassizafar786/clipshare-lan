@@ -39,6 +39,12 @@ function peerStatus(peer) {
   return "seen";
 }
 
+function errText(e) {
+  return String(e?.message || e)
+    .replace(/^Error invoking remote method '[^']+':\s*/, "")
+    .replace(/^Error:\s*/, "");
+}
+
 function setTab(name) {
   activeTab = name;
   document.querySelectorAll(".tab").forEach((btn) => {
@@ -485,7 +491,7 @@ $("btnManualPair").onclick = async () => {
     $("manualCode").value = "";
     render(await window.clipshare.getState());
   } catch (e) {
-    err.textContent = String(e?.message || e);
+    err.textContent = errText(e);
     err.classList.remove("hidden");
   }
 };
@@ -511,7 +517,7 @@ $("pairForm").onsubmit = async (e) => {
     closePairDialog();
     render(await window.clipshare.getState());
   } catch (err) {
-    $("pairError").textContent = String(err?.message || err);
+    $("pairError").textContent = errText(err);
     $("pairError").classList.remove("hidden");
   }
 };
@@ -559,7 +565,7 @@ $("btnPickFiles").onclick = async () => {
   try {
     await window.clipshare.sendFiles(peerId, paths);
   } catch (e) {
-    err.textContent = String(e?.message || e);
+    err.textContent = errText(e);
     err.classList.remove("hidden");
   } finally {
     $("btnPickFiles").disabled = false;

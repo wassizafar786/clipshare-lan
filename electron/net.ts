@@ -41,6 +41,12 @@ const BROADCAST = "255.255.255.255";
 const PEER_STALE_MS = 12_000;
 /** Min gap between auto-reconnect attempts for a paired peer. */
 const RECONNECT_COOLDOWN_MS = 3_000;
+/**
+ * macOS returns EHOSTUNREACH immediately when ARP for a Wi-Fi peer is still
+ * incomplete (Windows radio asleep / just appeared). A later attempt succeeds.
+ */
+const CONNECT_TIMEOUT_MS = 2_000;
+const CONNECT_RETRY_DELAYS_MS = [0, 400, 900, 1600, 2800, 4500];
 
 type IncomingFile = {
   peerId: string;
@@ -103,6 +109,40 @@ function parseLine(raw: string): WireMessage | null {
   } catch {
     return null;
   }
+}
+
+/** Failures worth retrying: neighbor still waking, or the TCP port not ready yet. */
+export function isTransientConnectError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code || "";
+  if (
+    code === "EHOSTUNREACH" ||
+    code === "EHOSTDOWN" ||
+    code === "ENETUNREACH" ||
+    code === "ENETDOWN" ||
+    code === "ECONNREFUSED" ||
+    code === "ETIMEDOUT" ||
+    code === "EAI_AGAIN"
+  ) {
+    return true;
+  }
+  return String((err as Error | undefined)?.message || err || "").includes("connect timeout");
+}
+
+function connectFailureMessage(peer: PeerInfo, err: unknown): string {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code || "";
+  const where = `${peer.name} (${peer.host}:${peer.port})`;
+  if (code === "EHOSTUNREACH" || code === "EHOSTDOWN" || code === "ENETUNREACH" || code === "ENETDOWN") {
+    return `Can't reach ${where}. It is on the Wi-Fi list but not answering. Wake that PC, turn off any VPN, then try pairing again.`;
+  }
+  if (
+    code === "ECONNREFUSED" ||
+    code === "ETIMEDOUT" ||
+    String((err as Error | undefined)?.message || "").includes("connect timeout")
+  ) {
+    return `Can't connect to ${where}. On Windows, allow ClipShare LAN through the firewall for private networks, then try again.`;
+  }
+  const raw = err instanceof Error ? err.message : String(err);
+  return `Can't connect to ${where}. ${raw}`;
 }
 
 export type ClipHandler = (text: string, fromPeer: string) => void;
@@ -516,21 +556,35 @@ export class ClipMeshNetwork {
     });
   }
 
-  private broadcastHello(): void {
-    if (!this.udp || !this.listenPort) return;
-    const payload = JSON.stringify({
+  private helloPayload(): string {
+    return JSON.stringify({
       type: "hello",
       id: this.deviceId,
       name: this.deviceName,
       port: this.listenPort,
       kind: this.deviceKind,
     } satisfies WireMessage);
+  }
+
+  private broadcastHello(): void {
+    if (!this.udp || !this.listenPort) return;
+    const payload = this.helloPayload();
     for (const host of discoveryBroadcastTargets()) {
       try {
         this.udp.send(payload, DISCOVERY_PORT, host);
       } catch {
         /* ignore per-target failures */
       }
+    }
+  }
+
+  /** Unicast hello so a sleeping Wi-Fi peer answers ARP before we open TCP. */
+  private nudgePeer(host: string): void {
+    if (!this.udp || !this.listenPort) return;
+    try {
+      this.udp.send(this.helloPayload(), DISCOVERY_PORT, host);
+    } catch {
+      /* ignore */
     }
   }
 
@@ -636,15 +690,29 @@ export class ClipMeshNetwork {
     });
   }
 
-  private async ensureConnected(peer: PeerInfo): Promise<void> {
-    if (this.sockets.has(peer.id)) return;
-    await new Promise<void>((resolve, reject) => {
+  private connectOnce(peer: PeerInfo): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (this.sockets.has(peer.id)) {
+        resolve();
+        return;
+      }
       const socket = new net.Socket();
-      const timer = setTimeout(() => {
+      let settled = false;
+      const fail = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         socket.destroy();
-        reject(new Error("connect timeout"));
-      }, 4000);
+        reject(err);
+      };
+      const timer = setTimeout(() => fail(new Error("connect timeout")), CONNECT_TIMEOUT_MS);
+      socket.once("error", (err) => fail(err));
       socket.connect(peer.port, peer.host, () => {
+        if (settled) {
+          socket.destroy();
+          return;
+        }
+        settled = true;
         clearTimeout(timer);
         this.sockets.set(peer.id, socket);
         this.attachSocket(socket, peer.id);
@@ -653,11 +721,27 @@ export class ClipMeshNetwork {
         this.onChange();
         resolve();
       });
-      socket.on("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
     });
+  }
+
+  private async ensureConnected(peer: PeerInfo): Promise<void> {
+    if (this.sockets.has(peer.id)) return;
+    let lastErr: unknown = new Error("connect timeout");
+    for (let i = 0; i < CONNECT_RETRY_DELAYS_MS.length; i++) {
+      if (this.sockets.has(peer.id)) return;
+      const delay = CONNECT_RETRY_DELAYS_MS[i] ?? 0;
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+      if (this.sockets.has(peer.id)) return;
+      this.nudgePeer(peer.host);
+      try {
+        await this.connectOnce(peer);
+        return;
+      } catch (err) {
+        lastErr = err;
+        if (!isTransientConnectError(err)) break;
+      }
+    }
+    throw new Error(connectFailureMessage(peer, lastErr));
   }
 
   private send(peerId: string, msg: WireMessage): void {
@@ -954,6 +1038,7 @@ export const protocolTest = {
   decryptBytes,
   generatePairingCode,
   localIpv4s,
+  isTransientConnectError,
   MAX_FILE_BYTES,
   FILE_CHUNK_BYTES,
 };
