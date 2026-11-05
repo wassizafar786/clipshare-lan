@@ -45,6 +45,7 @@
       "output": "release"
     },
     "icon": "build/icon.png",
+    "artifactBuildStarted": "scripts/sign-mac-adhoc.cjs",
     "files": [
       "dist/**/*",
       "package.json"

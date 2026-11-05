@@ -42,3 +42,5 @@
 - A paired peer is online when its TCP socket is writable, even if UDP hellos pause. Inbound clips must claim that socket; do not replace the discovery listen port with the TCP remote port, or Mac→Windows sends miss the real listener and the UI stays "paired · offline". (learned 2026-11-05) <!-- cid:261105-paired-offline-but-receives:d8b1a44e02 -->
 
 - Check for updates must change the Settings line (Checking…, up to date, available, or the error). A finished check that leaves the old sentence looks like a dead button. (learned 2026-11-05) <!-- cid:261105-check-for-updates-silent:e3c91b07aa -->
+
+- A Mac download shows "ClipShare LAN is damaged" when the app bundle is only linker-signed. Seal it with an ad-hoc signature before the dmg and zip are packed. (learned 2026-11-05) <!-- cid:261105-damaged-unsigned-mac:f1a0c83d22 -->
