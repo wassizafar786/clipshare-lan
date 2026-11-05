@@ -40,3 +40,5 @@
 - App icon is `build/icon.png` (1024) and `assets/icon.png` for the running window and Dock. Without it, electron-builder uses the default Electron icon, which looks like the React atom. (learned 2026-11-05) <!-- cid:261105-app-icon-not-electron:c4a8f03e11 -->
 
 - A paired peer is online when its TCP socket is writable, even if UDP hellos pause. Inbound clips must claim that socket; do not replace the discovery listen port with the TCP remote port, or Mac→Windows sends miss the real listener and the UI stays "paired · offline". (learned 2026-11-05) <!-- cid:261105-paired-offline-but-receives:d8b1a44e02 -->
+
+- Check for updates must change the Settings line (Checking…, up to date, available, or the error). A finished check that leaves the old sentence looks like a dead button. (learned 2026-11-05) <!-- cid:261105-check-for-updates-silent:e3c91b07aa -->

@@ -330,21 +330,37 @@ function renderUpdateBar(state) {
 
   const busy = status === "downloading" || status === "checking";
   const show =
-    !updateDismissed &&
-    (status === "available" ||
-      status === "downloading" ||
-      status === "downloaded" ||
-      status === "error" ||
-      (!!state.updateAvailable && !!state.updateVersion));
+    status === "checking" ||
+    (!updateDismissed &&
+      (status === "available" ||
+        status === "downloading" ||
+        status === "downloaded" ||
+        status === "error" ||
+        (!!state.updateAvailable && !!state.updateVersion)));
 
+  const upToDate =
+    status === "idle" &&
+    state.latestVersion &&
+    state.latestVersion === state.appVersion &&
+    !state.updateAvailable;
   $("settingsUpdateHint").textContent =
-    status === "downloaded"
-      ? `Update ready: restart to install v${state.updateVersion}.`
-      : status === "available"
-        ? `Update available: v${state.updateVersion}.`
-        : status === "dev"
-          ? "Updates apply in packaged installs (not while running from source)."
-          : `Current ${ver}. Checks GitHub Releases automatically when installed.`;
+    status === "checking"
+      ? "Checking GitHub for updates…"
+      : status === "downloaded"
+        ? `Update ready: restart to install v${state.updateVersion}.`
+        : status === "available" || state.updateAvailable
+          ? `Update available: v${state.updateVersion}.`
+          : status === "downloading"
+            ? `Downloading v${state.updateVersion}… ${state.updateProgress ?? 0}%`
+            : status === "error"
+              ? state.updateError || "Update check failed."
+              : status === "dev"
+                ? "Updates apply in packaged installs (not while running from source)."
+                : upToDate
+                  ? `You're up to date (${ver}).`
+                  : `Current ${ver}. Press Check for updates.`;
+  const checkBtn = $("btnCheckUpdate");
+  if (checkBtn) checkBtn.disabled = busy;
 
   if (!show) {
     bar.classList.add("hidden");
@@ -352,7 +368,13 @@ function renderUpdateBar(state) {
   }
   bar.classList.remove("hidden");
 
-  if (status === "downloading") {
+  if (status === "checking") {
+    $("updateText").textContent = "Checking GitHub for updates…";
+    progressWrap.classList.add("hidden");
+    btn.textContent = "Checking…";
+    btn.disabled = true;
+    fallback.classList.add("hidden");
+  } else if (status === "downloading") {
     const pct = state.updateProgress ?? 0;
     $("updateText").textContent = `Downloading update… ${pct}%`;
     progressWrap.classList.remove("hidden");
@@ -377,7 +399,7 @@ function renderUpdateBar(state) {
     progressWrap.classList.add("hidden");
     btn.textContent = "Update now";
     btn.disabled = !!busy;
-    fallback.classList.add("hidden");
+    fallback.classList.remove("hidden");
   }
 }
 
@@ -546,8 +568,18 @@ $("btnDismissUpdate").onclick = () => {
 };
 
 $("btnCheckUpdate").onclick = async () => {
-  await window.clipshare.checkUpdate();
-  render(await window.clipshare.getState());
+  updateDismissed = false;
+  const btn = $("btnCheckUpdate");
+  btn.disabled = true;
+  $("settingsUpdateHint").textContent = "Checking GitHub for updates…";
+  try {
+    await window.clipshare.checkUpdate();
+  } catch (e) {
+    $("settingsUpdateHint").textContent = errText(e);
+  } finally {
+    btn.disabled = false;
+    render(await window.clipshare.getState());
+  }
 };
 
 $("btnPickFiles").onclick = async () => {

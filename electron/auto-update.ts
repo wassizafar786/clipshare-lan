@@ -1,6 +1,6 @@
 import { app } from "electron";
 import { autoUpdater, type UpdateInfo as EuUpdateInfo } from "electron-updater";
-import { compareSemver } from "./update-check";
+import { checkForUpdate, compareSemver } from "./update-check";
 
 export type UpdateUiStatus =
   | "idle"
@@ -27,6 +27,7 @@ const DEFAULT_RELEASES = "https://github.com/wassizafar786/clipshare-lan/release
 
 let listener: Listener | null = null;
 let wired = false;
+let releasePinned = false;
 
 const state: AutoUpdateState = {
   status: "idle",
@@ -84,11 +85,12 @@ function wireUpdater(): void {
     });
   });
 
-  autoUpdater.on("update-not-available", () => {
+  autoUpdater.on("update-not-available", (info: EuUpdateInfo) => {
+    const latest = String(info?.version || state.currentVersion || "").replace(/^v/i, "");
     setState({
       status: "idle",
       updateAvailable: false,
-      latestVersion: null,
+      latestVersion: latest || state.currentVersion,
       progress: null,
       error: null,
     });
@@ -114,6 +116,7 @@ function wireUpdater(): void {
   });
 
   autoUpdater.on("error", (err) => {
+    if (releasePinned && state.status !== "downloading") return;
     setState({
       status: "error",
       error: String(err?.message || err || "Update failed"),
@@ -139,15 +142,58 @@ export async function checkAutoUpdate(): Promise<AutoUpdateState> {
     return getAutoUpdateState();
   }
   wireUpdater();
+  releasePinned = false;
+  setState({ status: "checking", error: null, progress: null });
+  let finished = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const check = autoUpdater.checkForUpdates().catch((err) => {
+    if (!finished) throw err;
+  });
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Update check timed out. Try again.")), 20_000);
+  });
   try {
-    await autoUpdater.checkForUpdates();
+    await Promise.race([check, timeout]);
   } catch (err) {
     setState({
       status: "error",
       error: String((err as Error)?.message || err),
     });
+  } finally {
+    finished = true;
+    if (timer) clearTimeout(timer);
   }
+  await applyReleaseFallback();
   return getAutoUpdateState();
+}
+
+/** GitHub Releases is the result the button must show when the updater channel fails. */
+async function applyReleaseFallback(): Promise<void> {
+  if (state.status === "available" || state.status === "downloaded" || state.status === "downloading") {
+    return;
+  }
+  const gh = await checkForUpdate(state.currentVersion);
+  if (gh.updateAvailable && gh.latestVersion) {
+    releasePinned = true;
+    setState({
+      status: "available",
+      latestVersion: gh.latestVersion,
+      updateAvailable: true,
+      updateUrl: gh.releaseUrl || releasesPage(),
+      error: null,
+      progress: null,
+    });
+    return;
+  }
+  if (state.status === "error") return;
+  const latest = gh.latestVersion || state.currentVersion;
+  setState({
+    status: "idle",
+    latestVersion: latest,
+    updateAvailable: false,
+    error: null,
+    progress: null,
+  });
 }
 
 /** Download the available update (packaged only). */
@@ -157,6 +203,7 @@ export async function downloadAutoUpdate(): Promise<AutoUpdateState> {
     return getAutoUpdateState();
   }
   wireUpdater();
+  releasePinned = false;
   try {
     setState({ status: "downloading", progress: 0, error: null });
     await autoUpdater.downloadUpdate();
